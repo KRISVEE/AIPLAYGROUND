@@ -1,0 +1,11 @@
+{
+    "id": "demo-cube",
+    "title": "Demo Scene",
+    "version": "1.0.0",
+    "engine": "threejs",
+    "entry": "index.js",
+    "runtime": {
+        "cameraPosition": [0, 2, 5],
+        "backgroundColor": "#111111"
+    }
+}

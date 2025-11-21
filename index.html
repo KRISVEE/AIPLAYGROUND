@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Playground — Future Gaming</title>
+    
+    <!-- Modern Tech Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Three.js Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <!-- The 3D Background Layer -->
+    <canvas id="bg-canvas"></canvas>
+
+    <header class="glass-header">
+        <div class="header-content">
+            <div class="logo">AI <span>PLAYGROUND</span></div>
+            <nav>
+                <a href="#" class="active" onclick="document.getElementById('root').scrollIntoView({behavior: 'smooth'})">Explore</a>
+                <a href="#" onclick="document.getElementById('about').scrollIntoView({behavior: 'smooth'})">About</a>
+            </nav>
+        </div>
+        
+        <!-- Search Bar -->
+        <div class="search-wrapper">
+            <div class="search-bar">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="Search the neural network...">
+                <select id="typeFilter">
+                    <option value="all">All Nodes</option>
+                    <option value="game">Games</option>
+                    <option value="simulation">Sims</option>
+                    <option value="educational">Learn</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <main id="root">
+        <!-- Hero Section -->
+        <section id="hero">
+            <div class="hero-content">
+                <h2 class="glitch-text">EXPERIENCE <br>GENERATED REALITIES</h2>
+                <p>Curated AI games & physics simulations running in your browser.</p>
+                <button class="cta-button" onclick="document.getElementById('games').scrollIntoView({behavior: 'smooth'})">
+                    Initialize Sequence
+                </button>
+            </div>
+        </section>
+
+        <!-- Content Sections -->
+        <div class="content-layer">
+            <section id="games">
+                <div class="section-header">
+                    <h2><span>01.</span> GAMES</h2>
+                </div>
+                <div class="carousel" id="games-list"></div>
+            </section>
+
+            <section id="simulations">
+                <div class="section-header">
+                    <h2><span>02.</span> SIMULATIONS</h2>
+                </div>
+                <div class="carousel" id="simulations-list"></div>
+            </section>
+
+            <section id="educational">
+                <div class="section-header">
+                    <h2><span>03.</span> LEARNING</h2>
+                </div>
+                <div class="carousel" id="educational-list"></div>
+            </section>
+        </div>
+
+        <!-- New 3D About Section -->
+        <section id="about">
+            <div class="about-container">
+                <!-- Left side spacer: The 3D "Cyber Core" will float here -->
+                <div class="about-visual-spacer"></div>
+                
+                <div class="about-content glass-panel">
+                    <h2 class="glitch-text">ARCHITECT <br><span>OF REALITY</span></h2>
+                    
+                    <div class="profile-meta">
+                        <span class="role-badge">Lead Developer</span>
+                        <span class="role-badge">AI Curator</span>
+                    </div>
+
+                    <p class="bio">
+                        Building the bridge between procedural generation and human experience. 
+                        I specialize in high-performance <strong>WebGL</strong> experiences and 
+                        <strong>AI-driven</strong> game logic.
+                    </p>
+
+                    <div class="skills-list">
+                        <div class="skill-item">
+                            <span class="skill-value" style="width: 95%"></span>
+                            <span class="skill-name">Three.js / WebGL</span>
+                        </div>
+                        <div class="skill-item">
+                            <span class="skill-value" style="width: 85%"></span>
+                            <span class="skill-name">React & State</span>
+                        </div>
+                        <div class="skill-item">
+                            <span class="skill-value" style="width: 90%"></span>
+                            <span class="skill-name">GenAI Integration</span>
+                        </div>
+                    </div>
+
+                    <div class="about-cta">
+                        <button class="cta-button" onclick="alert('Opening email client...')">Initiate Contact</button>
+                        <a href="#" class="secondary-link">View GitHub Database</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Player Modal -->
+    <div id="playerModal" class="hidden" aria-hidden="true" role="dialog">
+        <div class="player-wrapper">
+            <div id="playerToolbar" class="glass-panel">
+                <span id="playerTitle">Loading Module...</span>
+                <div class="controls">
+                    <button id="refreshFrame" class="icon-btn" title="Restart">↻</button>
+                    <button id="closePlayer" class="exit-btn">TERMINATE</button>
+                </div>
+            </div>
+            <div id="playerContainer"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="background_effect.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

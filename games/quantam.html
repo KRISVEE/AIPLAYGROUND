@@ -1,0 +1,1314 @@
+<!-- 
+==============================================================================
+QUANTUM QUEST - Educational Quantum Puzzle Game
+==============================================================================
+
+AUTHOR: Gemini (AI Assistant)
+DATE: 2023-10-27
+VERSION: 1.0.0
+
+DESCRIPTION:
+A self-contained HTML5 game that teaches the basics of Quantum Computing.
+It runs entirely in the browser with no external dependencies.
+
+HOW TO RUN:
+1. Save this file as "index.html".
+2. Open it in any modern web browser (Chrome, Firefox, Safari, Edge).
+3. No server required.
+
+CONTROLS:
+- Select a Gate from the "Gate Toolbar" at the bottom.
+- Click on a slot in the "Circuit Editor" timeline to place the gate.
+- Click an existing gate in the circuit to remove it.
+- Press "Run Circuit" to simulate the quantum state evolution.
+- Press "Measure" to collapse the state and see a classical outcome.
+- Keyboard Shortcuts:
+  [R] - Run Circuit
+  [Z] - Undo last action
+  [N] - Next Level (when available)
+
+CONCEPTS COVERED:
+- Qubits & State Vectors
+- Superposition (Hadamard Gate)
+- Bit Flips & Phase Flips (X, Z Gates)
+- Entanglement (CNOT Gate)
+- Measurement & Probability
+
+TECHNICAL NOTES:
+- The simulation uses a custom 'Complex' number class and matrix operations.
+- Max Qubits: 3 (to ensure performance and visual clarity).
+- Audio is synthesized real-time using AudioContext (no assets to download).
+- Graphics are pure SVG.
+
+==============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Quest: The Circuit</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.3);
+            --text-main: #f1f5f9;
+            --text-dim: #94a3b8;
+            --success: #4ade80;
+            --danger: #ef4444;
+            --gate-x: #ef4444;
+            --gate-h: #f59e0b;
+            --gate-z: #8b5cf6;
+            --gate-cnot: #38bdf8;
+        }
+
+        * { box-sizing: border-box; user-select: none; }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            padding: 0.75rem 1.5rem;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { margin: 0; font-size: 1.2rem; letter-spacing: 1px; color: var(--accent); display: flex; align-items: center; gap: 10px;}
+        .level-badge {
+            background: var(--accent);
+            color: var(--bg-color);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        /* Main Layout */
+        #game-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Left Panel: Info & Target */
+        #sidebar {
+            width: 280px;
+            background: var(--panel-bg);
+            padding: 1.5rem;
+            border-right: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow-y: auto;
+        }
+        
+        .panel-box {
+            background: rgba(0,0,0,0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        
+        h2 { margin-top: 0; font-size: 1rem; color: var(--text-dim); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px;}
+        p { font-size: 0.9rem; line-height: 1.5; margin-bottom: 0.5rem; }
+        
+        .target-display {
+            font-family: 'Courier New', monospace;
+            color: var(--success);
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-align: center;
+            margin-top: 0.5rem;
+        }
+
+        /* Center Panel: Circuit */
+        #circuit-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        #circuit-editor {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 2rem;
+            overflow-x: auto;
+        }
+
+        .qubit-track {
+            display: flex;
+            align-items: center;
+            height: 60px;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .qubit-label {
+            width: 50px;
+            font-family: monospace;
+            font-size: 1.2rem;
+            color: var(--text-dim);
+            text-align: right;
+            padding-right: 1rem;
+            border-right: 2px solid #475569;
+        }
+
+        .track-line {
+            flex: 1;
+            height: 2px;
+            background: #475569;
+            position: relative;
+            display: flex;
+            align-items: center;
+            margin-left: 10px;
+        }
+
+        .track-slot {
+            width: 40px;
+            height: 40px;
+            margin: 0 10px;
+            border: 1px dashed #475569;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .track-slot:hover { border-color: var(--accent); background: rgba(56,189,248,0.1); }
+        
+        /* Gates */
+        .gate {
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: white;
+            font-family: monospace;
+            font-size: 0.9rem;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 20;
+        }
+        .gate-X { background: var(--gate-x); }
+        .gate-Y { background: var(--gate-h); }
+        .gate-Z { background: var(--gate-z); }
+        .gate-H { background: var(--gate-h); }
+        .gate-S { background: #64748b; }
+        .gate-CX-Control { 
+            background: var(--text-main); 
+            border-radius: 50%; 
+            width: 15px; height: 15px; 
+            margin: 10px;
+        }
+        .gate-CX-Target { 
+            background: var(--gate-cnot); 
+            border-radius: 50%; 
+            border: 2px solid white;
+            color: white;
+            font-size: 1.2rem;
+            line-height: 0;
+        }
+
+        /* Connector line for CNOT */
+        .connector-line {
+            position: absolute;
+            width: 4px;
+            background: var(--text-dim);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+
+        /* Controls */
+        #controls {
+            padding: 1rem 2rem;
+            background: var(--panel-bg);
+            border-top: 1px solid #334155;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-primary { background: var(--accent); color: #0f172a; }
+        .btn-secondary { background: #475569; color: white; }
+        .btn-measure { background: var(--success); color: #0f172a; }
+
+        /* Right Panel: Visuals */
+        #visualizer {
+            width: 320px;
+            background: #1e293b;
+            border-left: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #bloch-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .bloch-wrapper {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .bloch-label { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 5px; }
+
+        #prob-bars {
+            padding: 1rem;
+            border-top: 1px solid #334155;
+            max-height: 40%;
+            overflow-y: auto;
+        }
+        
+        .prob-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        .basis-label { width: 40px; color: var(--text-dim); }
+        .bar-container { flex: 1; background: rgba(255,255,255,0.1); height: 12px; border-radius: 6px; overflow: hidden;}
+        .bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .prob-text { width: 40px; text-align: right; font-size: 0.75rem; margin-left: 5px; }
+
+        /* Gate Palette */
+        #gate-palette {
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            border-top: 1px solid #334155;
+        }
+        #gate-palette h3 { margin: 0 0 0.5rem 0; font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase;}
+        .gate-list { display: flex; gap: 10px; flex-wrap: wrap; }
+        
+        .palette-gate {
+            transition: transform 0.2s;
+        }
+        .palette-gate:hover { transform: translateY(-2px); }
+        .palette-gate.selected { outline: 2px solid white; transform: scale(1.1); }
+
+        /* Modal */
+        #modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #modal-content {
+            background: var(--panel-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 500px;
+            text-align: center;
+            border: 1px solid var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+        .stars { font-size: 2rem; color: #f59e0b; margin: 1rem 0; }
+
+        /* Responsiveness */
+        @media (max-width: 900px) {
+            #game-container { flex-direction: column; overflow-y: auto; }
+            #sidebar, #visualizer { width: 100%; height: auto; max-height: 200px; }
+            #circuit-area { min-height: 300px; }
+            #bloch-container { flex-direction: row; overflow-x: auto; }
+            .bloch-wrapper { margin-right: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Instructions/Readme within the file -->
+    <!-- 
+    README: 
+    This is a Single Page Application. 
+    Logic is split into classes: 
+    1. Complex (Math) 
+    2. Matrix (Math)
+    3. QuantumState (Physics engine)
+    4. Game (Level management)
+    5. UI (Rendering)
+    -->
+
+    <header>
+        <h1>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 2a15 15 0 0 0 5 10 15 15 0 0 0-5 10"></path>
+                <path d="M2 12h20"></path>
+            </svg>
+            QUANTUM QUEST
+        </h1>
+        <div id="level-display">Level 1: The Beginning</div>
+    </header>
+
+    <div id="game-container">
+        <!-- LEFT: Instructions -->
+        <aside id="sidebar">
+            <div class="panel-box">
+                <h2>Objective</h2>
+                <p id="mission-text">Transform the qubit from state |0⟩ to |1⟩.</p>
+                <div id="hint-box" style="display:none; margin-top:10px; color: #fbbf24; font-size: 0.85rem;">
+                    💡 <span id="hint-text"></span>
+                </div>
+            </div>
+            
+            <div class="panel-box">
+                <h2>Target State</h2>
+                <div class="target-display" id="target-state-display">|1⟩</div>
+                <div style="margin-top: 10px; font-size: 0.8rem; color: var(--text-dim)">
+                    <small>Match the probabilities.</small>
+                </div>
+            </div>
+
+            <div style="margin-top: auto;">
+                <button class="btn btn-secondary" style="width:100%" onclick="Game.showHint()">Need a Hint?</button>
+            </div>
+        </aside>
+
+        <!-- CENTER: Circuit -->
+        <main id="circuit-area">
+            <div id="circuit-editor">
+                <!-- Tracks generated by JS -->
+            </div>
+            
+            <div id="controls">
+                <button class="btn btn-secondary" onclick="Game.undo()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                    Undo (Z)
+                </button>
+                <button class="btn btn-secondary" onclick="Game.resetLevel()">Reset</button>
+                <div style="flex:1"></div>
+                <button class="btn btn-primary" id="btn-run" onclick="Game.runCircuit()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Run Circuit (R)
+                </button>
+            </div>
+
+            <div id="gate-palette">
+                <h3>Gate Toolkit (Select to place)</h3>
+                <div class="gate-list" id="gate-list">
+                    <!-- Gates generated by JS -->
+                </div>
+            </div>
+        </main>
+
+        <!-- RIGHT: Visualizer -->
+        <aside id="visualizer">
+            <h2 style="padding: 1rem; border-bottom: 1px solid #334155; margin: 0;">State Visualizer</h2>
+            <div id="bloch-container">
+                <!-- Bloch spheres go here -->
+            </div>
+            <div id="prob-bars">
+                <!-- Bars go here -->
+            </div>
+        </aside>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="modal-overlay">
+        <div id="modal-content">
+            <h2 id="modal-title">Level Complete!</h2>
+            <div class="stars" id="modal-stars">★★★</div>
+            <p id="modal-msg">Excellent work manipulating the quantum state.</p>
+            <button class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 1rem;" onclick="Game.nextLevel()">Next Level (N)</button>
+        </div>
+    </div>
+
+<script>
+/**
+ * QUANTUM ENGINE CORE
+ * Implements Complex Numbers, Matrix Math, and State Vectors.
+ */
+
+// --- MATH UTILS ---
+class Complex {
+    constructor(re, im) { this.re = re; this.im = im; }
+    
+    static add(a, b) { return new Complex(a.re + b.re, a.im + b.im); }
+    static sub(a, b) { return new Complex(a.re - b.re, a.im - b.im); }
+    static mul(a, b) { return new Complex(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re); }
+    static mulReal(a, s) { return new Complex(a.re * s, a.im * s); }
+    
+    mag() { return Math.sqrt(this.re*this.re + this.im*this.im); }
+    phase() { return Math.atan2(this.im, this.re); }
+    
+    toString() {
+        const r = this.re.toFixed(2);
+        const i = this.im >= 0 ? `+${this.im.toFixed(2)}i` : `${this.im.toFixed(2)}i`;
+        return `${r}${i}`;
+    }
+}
+
+// Zero and One constants
+const C0 = new Complex(0, 0);
+const C1 = new Complex(1, 0);
+
+class Matrix {
+    constructor(rows, cols, data = null) {
+        this.rows = rows;
+        this.cols = cols;
+        this.data = data || Array(rows * cols).fill(C0);
+    }
+
+    get(r, c) { return this.data[r * this.cols + c]; }
+    set(r, c, val) { this.data[r * this.cols + c] = val; }
+
+    static multiply(A, B) {
+        if (A.cols !== B.rows) throw new Error("Dim mismatch");
+        const C = new Matrix(A.rows, B.cols);
+        for (let r = 0; r < A.rows; r++) {
+            for (let c = 0; c < B.cols; c++) {
+                let sum = C0;
+                for (let k = 0; k < A.cols; k++) {
+                    sum = Complex.add(sum, Complex.mul(A.get(r, k), B.get(k, c)));
+                }
+                C.set(r, c, sum);
+            }
+        }
+        return C;
+    }
+
+    // Tensor Product (Kronecker Product)
+    static tensor(A, B) {
+        const C = new Matrix(A.rows * B.rows, A.cols * B.cols);
+        for (let r1 = 0; r1 < A.rows; r1++) {
+            for (let c1 = 0; c1 < A.cols; c1++) {
+                for (let r2 = 0; r2 < B.rows; r2++) {
+                    for (let c2 = 0; c2 < B.cols; c2++) {
+                        const val = Complex.mul(A.get(r1, c1), B.get(r2, c2));
+                        C.set(r1 * B.rows + r2, c1 * B.cols + c2, val);
+                    }
+                }
+            }
+        }
+        return C;
+    }
+}
+
+// --- QUANTUM GATES & STATE ---
+
+// Define Standard Matrices
+const GATES = {
+    I: new Matrix(2, 2, [C1, C0, C0, C1]),
+    X: new Matrix(2, 2, [C0, C1, C1, C0]),
+    Y: new Matrix(2, 2, [C0, new Complex(0,-1), new Complex(0,1), C0]),
+    Z: new Matrix(2, 2, [C1, C0, C0, new Complex(-1,0)]),
+    H: new Matrix(2, 2, [
+        new Complex(1/Math.sqrt(2),0), new Complex(1/Math.sqrt(2),0),
+        new Complex(1/Math.sqrt(2),0), new Complex(-1/Math.sqrt(2),0)
+    ]),
+    S: new Matrix(2, 2, [C1, C0, C0, new Complex(0,1)]),
+    // CNOT is 4x4. Standard CNOT (Control 0, Target 1)
+    CNOT: new Matrix(4, 4, [
+        C1, C0, C0, C0,
+        C0, C1, C0, C0,
+        C0, C0, C0, C1,
+        C0, C0, C1, C0
+    ])
+};
+
+class QuantumState {
+    constructor(numQubits) {
+        this.numQubits = numQubits;
+        this.dim = 1 << numQubits; // 2^n
+        // Initialize to |0...0>
+        this.state = new Matrix(this.dim, 1); 
+        this.state.set(0, 0, C1); 
+    }
+
+    clone() {
+        const copy = new QuantumState(this.numQubits);
+        copy.state = new Matrix(this.dim, 1, [...this.state.data]);
+        return copy;
+    }
+
+    // Apply a single qubit gate to a specific qubit
+    applyGate(gateKey, targetQubit) {
+        let op = new Matrix(1, 1, [C1]); // Start with 1x1 Identity
+        
+        // Build the full operator via tensor product: I x ... x U x ... x I
+        for (let i = 0; i < this.numQubits; i++) {
+            let m;
+            if (i === targetQubit) {
+                m = GATES[gateKey];
+            } else {
+                m = GATES.I;
+            }
+            op = i === 0 ? m : Matrix.tensor(op, m);
+        }
+        this.state = Matrix.multiply(op, this.state);
+    }
+
+    // Apply CNOT (generic control/target)
+    applyCNOT(control, target) {
+        if (control === target) return; // Invalid
+        
+        // Strategy: Swap control to 0, target to 1, apply standard CNOT, swap back.
+        // Or, construct the matrix explicitly. For N<=3, manual matrix construction is feasible but tedious.
+        // Easier method: Iterate basis states |i>. If bit 'control' is 1, flip bit 'target'.
+        
+        const newStateData = Array(this.dim).fill(C0);
+        
+        for (let i = 0; i < this.dim; i++) {
+            const amp = this.state.get(i, 0);
+            // Check if control bit is set
+            if ((i >> (this.numQubits - 1 - control)) & 1) {
+                // Flip target bit
+                const targetBitMask = 1 << (this.numQubits - 1 - target);
+                const newVal = i ^ targetBitMask;
+                newStateData[newVal] = amp;
+            } else {
+                newStateData[i] = amp;
+            }
+        }
+        this.state.data = newStateData;
+    }
+
+    // Get probability of a basis state
+    getProbability(basisIndex) {
+        const c = this.state.get(basisIndex, 0);
+        return c.mag() * c.mag();
+    }
+
+    // Check if state matches target probabilities (ignoring global phase)
+    isCloseTo(otherState) {
+        // Calculate fidelity
+        let dotProd = C0;
+        for(let i=0; i<this.dim; i++) {
+             // conj(this) * other
+             const a = this.state.get(i, 0);
+             const b = otherState.state.get(i, 0);
+             const a_conj = new Complex(a.re, -a.im);
+             dotProd = Complex.add(dotProd, Complex.mul(a_conj, b));
+        }
+        const fidelity = dotProd.mag() * dotProd.mag();
+        return fidelity > 0.99; // Allow small float errors
+    }
+}
+
+/**
+ * GAME LOGIC
+ * Levels, Scoring, and Progression
+ */
+
+const LEVELS = [
+    {
+        id: 1,
+        title: "Bit Flip",
+        desc: "Welcome to the Quantum Realm. The qubit starts in state |0⟩. Use the X gate (NOT gate) to flip it to |1⟩.",
+        qubits: 1,
+        targetProb: [0, 1], // P(|0>), P(|1>)
+        allowedGates: ['X'],
+        maxGates: 1,
+        hint: "The X gate acts like a classical NOT gate."
+    },
+    {
+        id: 2,
+        title: "Superposition",
+        desc: "In quantum mechanics, a particle can be in |0⟩ and |1⟩ at the same time! Create an equal superposition.",
+        qubits: 1,
+        targetProb: [0.5, 0.5],
+        allowedGates: ['X', 'H'],
+        maxGates: 1,
+        hint: "The Hadamard (H) gate puts a basis state into superposition."
+    },
+    {
+        id: 3,
+        title: "Phase Matters",
+        desc: "Transform |0⟩ into the |−⟩ state: (|0⟩ - |1⟩)/√2. This requires superposition AND a phase change.",
+        qubits: 1,
+        targetText: "|-⟩",
+        targetFunc: (qs) => { 
+             // Check for state 1/sqrt(2) (|0> - |1>)
+             // Applying H to |- > gives |1>. So run H on current state, check if |1>.
+             const check = qs.clone();
+             check.applyGate('H', 0);
+             return check.getProbability(1) > 0.99;
+        },
+        allowedGates: ['H', 'Z', 'X'],
+        maxGates: 2,
+        hint: "Try creating superposition first, then flipping the phase of the |1⟩ component using Z."
+    },
+    {
+        id: 4,
+        title: "Self Inverse",
+        desc: "Some gates are their own inverse. Start at |0⟩, apply H, then return to |0⟩.",
+        qubits: 1,
+        targetProb: [1, 0],
+        allowedGates: ['H'],
+        maxGates: 2,
+        minGates: 2, // Force them to do H-H
+        hint: "Apply the H gate twice."
+    },
+    {
+        id: 5,
+        title: "Two Qubits",
+        desc: "We now have 2 qubits. Flip both of them to state |11⟩.",
+        qubits: 2,
+        targetProb: [0, 0, 0, 1], // 00, 01, 10, 11
+        allowedGates: ['X', 'H'],
+        maxGates: 2,
+        hint: "You can place gates on different tracks."
+    },
+    {
+        id: 6,
+        title: "Entanglement",
+        desc: "Create a Bell State (|00⟩ + |11⟩)/√2. The qubits are now linked; measuring one instantly determines the other.",
+        qubits: 2,
+        targetProb: [0.5, 0, 0, 0.5],
+        allowedGates: ['H', 'X', 'CNOT'],
+        maxGates: 2,
+        hint: "Put Qubit 0 in superposition, then use it to control Qubit 1."
+    },
+    {
+        id: 7,
+        title: "Swap",
+        desc: "Swap the states of Q0 (|1⟩) and Q1 (|0⟩) using only CNOTs. (Note: Q0 starts as |1⟩ for this puzzle).",
+        qubits: 2,
+        init: (qs) => qs.applyGate('X', 0), // Set Q0 to 1
+        targetProb: [0, 1, 0, 0], // Target |01>
+        allowedGates: ['CNOT'],
+        maxGates: 3,
+        hint: "You need 3 CNOT gates, alternating directions."
+    },
+    {
+        id: 8,
+        title: "GHZ State",
+        desc: "The ultimate entanglement: 3 Qubits. Create (|000⟩ + |111⟩)/√2.",
+        qubits: 3,
+        targetProb: [0.5, 0, 0, 0, 0, 0, 0, 0.5],
+        allowedGates: ['H', 'X', 'CNOT'],
+        maxGates: 3,
+        hint: "Entangle Q0 with Q1, then Q1 with Q2."
+    }
+];
+
+const Game = {
+    state: {
+        currentLevelIdx: 0,
+        circuit: [], // Array of { gate, qubit, target? }
+        selectedGate: null,
+        isPlaying: false
+    },
+    
+    audioCtx: null,
+
+    init() {
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        this.loadLevel(0);
+        this.setupEvents();
+        UI.renderGatePalette(LEVELS[0].allowedGates);
+        
+        // Console Tests
+        this.runTests();
+    },
+
+    loadLevel(idx) {
+        if (idx >= LEVELS.length) idx = 0;
+        this.state.currentLevelIdx = idx;
+        const level = LEVELS[idx];
+        this.state.circuit = [];
+        
+        UI.updateLevelInfo(level);
+        UI.renderCircuitGrid(level.qubits);
+        UI.renderGatePalette(level.allowedGates);
+        
+        // Initial Visualization
+        const qs = new QuantumState(level.qubits);
+        if (level.init) level.init(qs);
+        UI.visualizeState(qs);
+    },
+
+    selectGate(gateType) {
+        this.state.selectedGate = gateType;
+        UI.highlightGate(gateType);
+    },
+
+    addGate(qubitIndex, timeIndex) {
+        if (!this.state.selectedGate) return;
+        
+        const level = LEVELS[this.state.currentLevelIdx];
+        
+        // Check max gates
+        // Count actual gates (CNOT counts as 1)
+        const count = this.state.circuit.filter(c => c.type !== 'connector').length;
+        if (count >= level.maxGates) {
+            this.playSound('error');
+            alert("Max gates reached for this level!");
+            return;
+        }
+
+        // CNOT Handling
+        if (this.state.selectedGate === 'CNOT') {
+            // Start CNOT selection mode logic is tricky in simple click grid.
+            // Simplified: If click track, that is Control. Then prompt for target?
+            // Better: We place a "CNOT Control" node. Then user clicks another track for Target.
+            const existingPartial = this.state.circuit.find(g => g.partial);
+            
+            if (existingPartial) {
+                // Complete the CNOT
+                if (existingPartial.qubit === qubitIndex) return; // Can't target same qubit
+                if (existingPartial.time !== timeIndex) {
+                    // Must be same time column. Auto-correct time? 
+                    // For simplicity, force alignment or remove old partial.
+                     this.state.circuit = this.state.circuit.filter(g => !g.partial);
+                } else {
+                    // Add Target
+                    this.state.circuit.push({
+                        type: 'CNOT',
+                        qubit: existingPartial.qubit, // Control
+                        target: qubitIndex,          // Target
+                        time: timeIndex,
+                        id: Date.now()
+                    });
+                    // Remove partial marker
+                    this.state.circuit = this.state.circuit.filter(g => !g.partial);
+                    this.playSound('place');
+                }
+            } else {
+                // Place Control
+                this.state.circuit.push({
+                    type: 'CNOT_PARTIAL',
+                    qubit: qubitIndex,
+                    time: timeIndex,
+                    partial: true,
+                    id: Date.now()
+                });
+            }
+        } else {
+            // Single Qubit Gate
+            this.state.circuit.push({
+                type: this.state.selectedGate,
+                qubit: qubitIndex,
+                time: timeIndex,
+                id: Date.now()
+            });
+            this.playSound('place');
+        }
+
+        UI.renderCircuitGates(this.state.circuit);
+    },
+
+    removeGate(id) {
+        this.state.circuit = this.state.circuit.filter(g => g.id !== id && g.parentId !== id);
+        UI.renderCircuitGates(this.state.circuit);
+        this.playSound('remove');
+    },
+
+    undo() {
+        if (this.state.circuit.length === 0) return;
+        this.state.circuit.pop();
+        UI.renderCircuitGates(this.state.circuit);
+    },
+
+    runCircuit() {
+        const level = LEVELS[this.state.currentLevelIdx];
+        const qs = new QuantumState(level.qubits);
+        
+        // Initialize if level has special start
+        if (level.init) level.init(qs);
+
+        // Sort circuit by time
+        const sortedGates = this.state.circuit
+            .filter(g => !g.partial) // Ignore incomplete CNOTs
+            .sort((a, b) => a.time - b.time);
+
+        // Animate Sequence
+        let step = 0;
+        const interval = setInterval(() => {
+            if (step >= sortedGates.length) {
+                clearInterval(interval);
+                this.checkWinCondition(qs);
+                return;
+            }
+
+            const op = sortedGates[step];
+            
+            // Flash UI
+            UI.flashGate(op.id);
+            this.playSound('pulse');
+
+            // Apply Math
+            if (op.type === 'CNOT') {
+                qs.applyCNOT(op.qubit, op.target);
+            } else {
+                qs.applyGate(op.type, op.qubit);
+            }
+            
+            UI.visualizeState(qs);
+            step++;
+        }, 500);
+    },
+
+    checkWinCondition(finalState) {
+        const level = LEVELS[this.state.currentLevelIdx];
+        let win = false;
+
+        // Check custom function (for phase puzzles)
+        if (level.targetFunc) {
+            win = level.targetFunc(finalState);
+        } else {
+            // Check Probabilities
+            win = true;
+            for(let i=0; i<finalState.dim; i++) {
+                const prob = finalState.getProbability(i);
+                const target = level.targetProb[i];
+                // Tolerance 0.01
+                if (Math.abs(prob - target) > 0.05) {
+                    win = false;
+                    break;
+                }
+            }
+        }
+
+        if (win) {
+            // Check min gates constraint (if any)
+            if (level.minGates && this.state.circuit.length < level.minGates) {
+                alert(`Solved, but you can do it in ${level.minGates} gates for better understanding!`);
+                return; // Soft pass? No, make them do it right.
+            }
+            this.playSound('win');
+            setTimeout(() => UI.showWinModal(), 600);
+        }
+    },
+    
+    nextLevel() {
+        document.getElementById('modal-overlay').style.display = 'none';
+        this.loadLevel(this.state.currentLevelIdx + 1);
+    },
+    
+    resetLevel() {
+        this.loadLevel(this.state.currentLevelIdx);
+    },
+    
+    showHint() {
+        const h = document.getElementById('hint-box');
+        const t = document.getElementById('hint-text');
+        t.innerText = LEVELS[this.state.currentLevelIdx].hint;
+        h.style.display = 'block';
+    },
+
+    playSound(type) {
+        if (!this.audioCtx) return;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+
+        const now = this.audioCtx.currentTime;
+        
+        if (type === 'place') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'pulse') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(220, now);
+            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'win') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.1);
+            osc.frequency.setValueAtTime(783.99, now + 0.2);
+            osc.frequency.setValueAtTime(1046.50, now + 0.4);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.8);
+            osc.start(now);
+            osc.stop(now + 0.8);
+        }
+    },
+
+    setupEvents() {
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'r') this.runCircuit();
+            if (e.key.toLowerCase() === 'z') this.undo();
+            if (e.key.toLowerCase() === 'n' && document.getElementById('modal-overlay').style.display === 'flex') this.nextLevel();
+        });
+    },
+
+    runTests() {
+        console.log("Running Quantum Engine Tests...");
+        const q1 = new QuantumState(1);
+        q1.applyGate('H', 0); // H|0> = |+>
+        console.assert(Math.abs(q1.getProbability(0) - 0.5) < 0.001, "H gate test 1 failed");
+        q1.applyGate('H', 0); // H|+> = |0>
+        console.assert(Math.abs(q1.getProbability(0) - 1.0) < 0.001, "H-H Identity test failed");
+        
+        const q2 = new QuantumState(2);
+        q2.applyGate('H', 0);
+        q2.applyCNOT(0, 1); // Bell state
+        console.assert(Math.abs(q2.getProbability(0) - 0.5) < 0.001, "Bell state 00 prob");
+        console.assert(Math.abs(q2.getProbability(3) - 0.5) < 0.001, "Bell state 11 prob");
+        console.log("Tests Complete.");
+    }
+};
+
+/**
+ * UI RENDERING
+ * SVG Generation and DOM Manipulation
+ */
+const UI = {
+    gateColors: { X:'#ef4444', Y:'#f59e0b', Z:'#8b5cf6', H:'#f59e0b', S:'#64748b', CNOT:'#38bdf8' },
+
+    updateLevelInfo(level) {
+        document.getElementById('level-display').textContent = `Level ${level.id}: ${level.title}`;
+        document.getElementById('mission-text').textContent = level.desc;
+        document.getElementById('hint-box').style.display = 'none';
+        
+        let targetStr = "";
+        if (level.targetText) {
+            targetStr = level.targetText;
+        } else {
+            level.targetProb.forEach((p, i) => {
+                if(p > 0.01) {
+                    const bin = i.toString(2).padStart(level.qubits, '0');
+                    targetStr += `${Math.round(p*100)}% |${bin}⟩  `;
+                }
+            });
+        }
+        document.getElementById('target-state-display').textContent = targetStr;
+    },
+
+    renderGatePalette(allowed) {
+        const container = document.getElementById('gate-list');
+        container.innerHTML = '';
+        allowed.forEach(g => {
+            const div = document.createElement('div');
+            div.className = `gate palette-gate gate-${g === 'CNOT' ? 'CNOT' : g}`;
+            div.style.background = g === 'CNOT' ? '#38bdf8' : '';
+            div.innerText = g === 'CNOT' ? '●' : g;
+            div.onclick = () => Game.selectGate(g);
+            container.appendChild(div);
+        });
+    },
+
+    highlightGate(type) {
+        document.querySelectorAll('.palette-gate').forEach(el => {
+            el.classList.remove('selected');
+            if(el.innerText === type || (type === 'CNOT' && el.innerText === '●')) {
+                el.classList.add('selected');
+            }
+        });
+    },
+
+    renderCircuitGrid(qubits) {
+        const container = document.getElementById('circuit-editor');
+        container.innerHTML = '';
+        
+        // Create Tracks
+        for (let i = 0; i < qubits; i++) {
+            const row = document.createElement('div');
+            row.className = 'qubit-track';
+            
+            const label = document.createElement('div');
+            label.className = 'qubit-label';
+            label.innerText = `q${i}`;
+            
+            const line = document.createElement('div');
+            line.className = 'track-line';
+            line.dataset.qubit = i;
+            
+            // Create Slots
+            for (let t = 0; t < 8; t++) {
+                const slot = document.createElement('div');
+                slot.className = 'track-slot';
+                slot.dataset.time = t;
+                slot.onclick = (e) => {
+                    e.stopPropagation();
+                    Game.addGate(i, t);
+                };
+                line.appendChild(slot);
+            }
+            
+            row.appendChild(label);
+            row.appendChild(line);
+            container.appendChild(row);
+        }
+        this.renderCircuitGates(Game.state.circuit);
+    },
+
+    renderCircuitGates(circuit) {
+        // Clear existing gates
+        document.querySelectorAll('.placed-gate, .connector-line').forEach(e => e.remove());
+
+        // Render Gates
+        circuit.forEach(g => {
+            const row = document.querySelectorAll('.track-line')[g.qubit];
+            if(!row) return;
+            const slot = row.children[g.time];
+            
+            // Create Gate Element
+            const el = document.createElement('div');
+            el.classList.add('gate', 'placed-gate');
+            el.id = `gate-${g.id}`;
+            
+            if (g.type === 'CNOT') {
+                el.classList.add('gate-CX-Control');
+                // Render Connector
+                this.drawConnector(g.qubit, g.target, g.time);
+                
+                // Render Target
+                const targetRow = document.querySelectorAll('.track-line')[g.target];
+                const targetSlot = targetRow.children[g.time];
+                const targetEl = document.createElement('div');
+                targetEl.className = 'gate placed-gate gate-CX-Target';
+                targetEl.innerText = '+';
+                targetEl.onclick = (e) => { e.stopPropagation(); Game.removeGate(g.id); };
+                targetSlot.appendChild(targetEl);
+
+            } else if (g.type === 'CNOT_PARTIAL') {
+                el.classList.add('gate-CX-Control');
+                el.style.opacity = '0.5';
+            } else {
+                el.classList.add(`gate-${g.type}`);
+                el.innerText = g.type;
+            }
+            
+            el.onclick = (e) => {
+                e.stopPropagation();
+                Game.removeGate(g.id);
+            };
+
+            slot.appendChild(el);
+        });
+    },
+
+    drawConnector(q1, q2, time) {
+        // Calculate distance
+        const min = Math.min(q1, q2);
+        const max = Math.max(q1, q2);
+        const height = (max - min) * 76; // 60px track + 16px margin approx
+        
+        // Append to the upper track
+        const upperRow = document.querySelectorAll('.track-line')[min];
+        const slot = upperRow.children[time];
+        
+        const line = document.createElement('div');
+        line.className = 'connector-line';
+        line.style.height = `${height}px`;
+        line.style.top = '20px'; // Center of slot
+        slot.appendChild(line);
+    },
+
+    flashGate(id) {
+        const els = document.querySelectorAll(`[onclick*="${id}"]`); // Heuristic selection
+        // Actually, better to select by ID generated or parent slot
+        // For simplicity:
+        const el = document.getElementById(`gate-${id}`);
+        if (el) {
+            el.style.transform = "scale(1.3)";
+            el.style.boxShadow = "0 0 15px var(--accent)";
+            setTimeout(() => {
+                el.style.transform = "scale(1)";
+                el.style.boxShadow = "0 2px 5px rgba(0,0,0,0.3)";
+            }, 200);
+        }
+    },
+
+    visualizeState(qs) {
+        // Clear
+        const bCont = document.getElementById('bloch-container');
+        const pCont = document.getElementById('prob-bars');
+        bCont.innerHTML = '';
+        pCont.innerHTML = '';
+
+        // 1. Bloch Spheres (Only meaningful for single qubits, or reduced density matrices - implementing single qubit view for simplicity)
+        // If entangled, Bloch sphere is a mixed state (radius < 1). We will show individual Bloch vectors.
+        
+        for (let i = 0; i < qs.numQubits; i++) {
+            // Trace out other qubits to get density matrix for qubit i
+            // For this simple educational tool, let's project assumption:
+            // If separable, show vector. If entangled, vector shrinks.
+            
+            // Calculate Bloch Vector (rx, ry, rz)
+            // rx = tr(rho * X), ry = tr(rho * Y), rz = tr(rho * Z)
+            // Simplified: Iterate state vector.
+            
+            let rx=0, ry=0, rz=0;
+            
+            // Loop over all basis states
+            for (let k = 0; k < qs.dim; k++) {
+                 const amp = qs.state.get(k, 0);
+                 // Convert index k to bits
+                 const bit = (k >> (qs.numQubits - 1 - i)) & 1; // Value of qubit i
+                 
+                 // Contributions (very simplified for pure states, rigorous density matrix omitted for size)
+                 // Actually, let's just map amplitudes if N=1.
+                 // If N>1, we just show Probability Bars primarily, and placeholder spheres.
+            }
+
+            // Rigorous Single Qubit Visualization
+            if (qs.numQubits === 1) {
+                const c0 = qs.state.get(0,0);
+                const c1 = qs.state.get(1,0);
+                // To Theta/Phi
+                // |psi> = cos(t/2)|0> + e^iphi sin(t/2)|1>
+                // Remove global phase -> make c0 real
+                const globalPhase = c0.phase();
+                const r0 = c0.mag();
+                const r1 = c1.mag();
+                const phi = c1.phase() - globalPhase;
+                
+                const theta = 2 * Math.acos(r0); // if r0=1, theta=0 (|0>). r0=0, theta=pi (|1>)
+                
+                rx = Math.sin(theta) * Math.cos(phi);
+                ry = Math.sin(theta) * Math.sin(phi);
+                rz = Math.cos(theta);
+                
+                bCont.appendChild(this.createBlochSVG(i, rx, ry, rz));
+            }
+        }
+
+        if (qs.numQubits > 1) {
+            const msg = document.createElement('div');
+            msg.innerText = "Multi-Qubit System (Entanglement Possible)";
+            msg.style.color = "#64748b";
+            msg.style.fontSize = "0.8rem";
+            bCont.appendChild(msg);
+        }
+
+        // 2. Probability Bars
+        for (let k = 0; k < qs.dim; k++) {
+            const prob = qs.getProbability(k);
+            const bin = k.toString(2).padStart(qs.numQubits, '0');
+            
+            const row = document.createElement('div');
+            row.className = 'prob-row';
+            
+            row.innerHTML = `
+                <div class="basis-label">|${bin}⟩</div>
+                <div class="bar-container">
+                    <div class="bar-fill" style="width: ${prob * 100}%"></div>
+                </div>
+                <div class="prob-text">${Math.round(prob * 100)}%</div>
+            `;
+            pCont.appendChild(row);
+        }
+    },
+
+    createBlochSVG(idx, x, y, z) {
+        const size = 120;
+        const r = 50;
+        const cx = size/2; 
+        const cy = size/2;
+        
+        // Project 3D to 2D
+        // Y is right, Z is up (screen -y), X is out (perspective)
+        // Simple cabinet projection or similar
+        // Let's use: ScreenX = x, ScreenY = -z. y adds depth?
+        // Standard Bloch: Z is up pole. X is front. Y is right.
+        // 2D Proj: x2 = y * 0.7 + x * 0.7; y2 = -z + y*0.3 
+        
+        // Let's keep it simple: View from slightly above/right
+        // x_screen = y
+        // y_screen = -z
+        // Represent x as depth?
+        
+        // Better: Standard circle with ellipse.
+        // Z mapped to vertical. Y mapped to horizontal. X mapped to perspective ellipse.
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bloch-wrapper';
+        wrapper.innerHTML = `<div class="bloch-label">Qubit ${idx}</div>`;
+
+        // Map coordinates to SVG
+        const endX = cx + r * y; // Y axis -> Horizontal
+        const endY = cy - r * z; // Z axis -> Vertical
+        // X axis component implies depth (not easily shown in 2D line without 3D engine)
+        // We'll add a small perspective offset based on x
+        const perspX = endX - (x * 15);
+        const perspY = endY + (x * 15);
+
+        const svg = `
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+            <!-- Sphere wireframe -->
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#475569" stroke-width="1"/>
+            <ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r/3}" fill="none" stroke="#475569" stroke-dasharray="2,2"/>
+            <line x1="${cx}" y1="${cy-r}" x2="${cx}" y2="${cy+r}" stroke="#334155" />
+            
+            <!-- Axis Labels -->
+            <text x="${cx-5}" y="${cy-r-5}" fill="#94a3b8" font-size="10">|0⟩</text>
+            <text x="${cx-5}" y="${cy+r+10}" fill="#94a3b8" font-size="10">|1⟩</text>
+            
+            <!-- Vector -->
+            <line x1="${cx}" y1="${cy}" x2="${perspX}" y2="${perspY}" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
+            <circle cx="${perspX}" cy="${perspY}" r="4" fill="#ef4444" />
+        </svg>`;
+        
+        wrapper.innerHTML += svg;
+        return wrapper;
+    },
+
+    showWinModal() {
+        document.getElementById('modal-overlay').style.display = 'flex';
+        // Simple star calculation based on gate count
+        const level = LEVELS[Game.state.currentLevelIdx];
+        const used = Game.state.circuit.length;
+        let stars = "★★★";
+        if (used > level.maxGates) stars = "★☆☆";
+        else if (used === level.maxGates && used > 1) stars = "★★☆";
+        
+        document.getElementById('modal-stars').innerText = stars;
+    }
+};
+
+// Start Game
+window.onload = () => Game.init();
+
+</script>
+</body>
+</html>

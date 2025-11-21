@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Educational Nuclear Reactor Visualization</title>
+    <style>
+        /* --- CSS STYLING --- */
+        :root {
+            --primary-color: #00f0ff;
+            --warning-color: #ffcc00;
+            --danger-color: #ff3333;
+            --bg-dark: #0b0d14;
+            --panel-bg: rgba(10, 15, 25, 0.85);
+            --border-color: rgba(0, 240, 255, 0.3);
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-dark);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #e0e0e0;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* UI Overlay Container */
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to 3D canvas */
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Common Panel Styles */
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(8px);
+            padding: 15px;
+            border-radius: 8px;
+            pointer-events: auto;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s ease;
+        }
+
+        /* Right Control Panel */
+        #controls-panel {
+            width: 320px;
+            max-height: 90vh;
+            overflow-y: auto;
+            align-self: flex-start;
+        }
+
+        /* Dashboard Sections */
+        .section {
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 15px;
+        }
+        .section:last-child { border-bottom: none; }
+
+        .section-title {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 10px;
+            display: block;
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Buttons */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn-start { background: #2ecc71; color: #000; }
+        .btn-pause { background: #f1c40f; color: #000; }
+        .btn-reset { background: #3498db; color: #fff; }
+        .btn-scram { 
+            background: var(--danger-color); 
+            color: white; 
+            font-weight: 900;
+            letter-spacing: 1px;
+            border: 2px solid #a00;
+            animation: pulse 2s infinite;
+        }
+        .btn-scram:active { transform: scale(0.95); }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 51, 51, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 51, 51, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 51, 51, 0); }
+        }
+
+        /* Sliders */
+        .control-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+        }
+        input[type="range"] {
+            width: 100%;
+            background: transparent;
+            cursor: pointer;
+            accent-color: var(--primary-color);
+        }
+
+        /* Readouts */
+        .readout-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .readout-item {
+            background: rgba(0,0,0,0.3);
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .readout-val {
+            display: block;
+            font-size: 1.2rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        .readout-label {
+            font-size: 0.7rem;
+            color: #aaa;
+        }
+
+        /* Charts */
+        #chart-canvas {
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            width: 100%;
+            height: 120px;
+        }
+
+        /* Tooltip */
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid var(--primary-color);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+            max-width: 250px;
+            font-size: 0.9rem;
+        }
+        #tooltip h4 { margin: 0 0 5px 0; color: var(--primary-color); }
+        #tooltip p { margin: 0; font-size: 0.8rem; color: #ccc; }
+
+        /* Modal/Onboarding */
+        #modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #1a1f2e;
+            padding: 30px;
+            border-radius: 8px;
+            border: 1px solid var(--primary-color);
+            max-width: 600px;
+            text-align: center;
+        }
+        .modal-content h2 { margin-top: 0; color: var(--primary-color); }
+        .modal-content ul { text-align: left; margin: 20px 0; padding-left: 20px; }
+        .modal-content li { margin-bottom: 8px; }
+        .start-sim-btn {
+            background: var(--primary-color);
+            color: #000;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .start-sim-btn:hover { background: #fff; }
+
+        /* Critical Failure Overlay */
+        #meltdown-alert {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.2);
+            border: 4px solid red;
+            color: red;
+            padding: 40px;
+            font-size: 3rem;
+            font-weight: 900;
+            text-align: center;
+            display: none;
+            z-index: 900;
+            animation: flash 0.5s infinite;
+            text-shadow: 0 0 10px red;
+            pointer-events: none;
+        }
+        @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+        /* Mobile Adjustments */
+        @media (max-width: 768px) {
+            #controls-panel {
+                width: 100%;
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                max-height: 40vh;
+                border-radius: 15px 15px 0 0;
+            }
+            .readout-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+            #chart-canvas { display: none; } 
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+    </style>
+
+    <!-- Import Three.js via ES Modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- SCENE CONTAINER -->
+    <div id="canvas-container"></div>
+
+    <!-- MELTDOWN OVERLAY -->
+    <div id="meltdown-alert">CRITICAL FAILURE<br>CORE MELTDOWN</div>
+
+    <!-- UI OVERLAY -->
+    <div id="ui-container">
+        
+        <!-- Right Controls -->
+        <div id="controls-panel" class="panel">
+            
+            <div class="section">
+                <div class="btn-group">
+                    <button id="btn-start" class="btn-start">Start</button>
+                    <button id="btn-pause" class="btn-pause">Pause</button>
+                    <button id="btn-reset" class="btn-reset">Reset</button>
+                </div>
+                <button id="btn-scram" class="btn-scram">⚠️ S.C.R.A.M. (EMERGENCY)</button>
+            </div>
+
+            <div class="section">
+                <span class="section-title">
+                    Status Readings
+                    <div class="toggle-container">
+                        <input type="checkbox" id="audio-toggle" checked> 🔊
+                    </div>
+                </span>
+                <div class="readout-grid">
+                    <div class="readout-item">
+                        <span id="val-power" class="readout-val">0%</span>
+                        <span class="readout-label">Power</span>
+                    </div>
+                    <div class="readout-item">
+                        <span id="val-temp" class="readout-val">25°C</span>
+                        <span class="readout-label">Core Temp</span>
+                    </div>
+                    <div class="readout-item">
+                        <span id="val-pressure" class="readout-val">1.0</span>
+                        <span class="readout-label">Press (Bar)</span>
+                    </div>
+                    <div class="readout-item">
+                        <span id="val-time" class="readout-val">0:00</span>
+                        <span class="readout-label">Runtime</span>
+                    </div>
+                </div>
+                <canvas id="chart-canvas" width="260" height="120"></canvas>
+            </div>
+
+            <div class="section">
+                <span class="section-title">Simulation Speed: <span id="lbl-speed">1.0x</span></span>
+                <input type="range" id="slider-speed" min="0.1" max="5.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="section">
+                <span class="section-title">Controls (Simplified Model)</span>
+                
+                <div class="control-group">
+                    <label>Target Power Output <span id="lbl-target">50%</span></label>
+                    <input type="range" id="slider-target" min="0" max="100" value="50">
+                </div>
+
+                <div class="control-group">
+                    <label>Control Rod Insertion <span id="lbl-rods">100%</span></label>
+                    <input type="range" id="slider-rods" min="0" max="100" value="100">
+                </div>
+
+                <div class="control-group">
+                    <label>Coolant Flow Rate <span id="lbl-flow">50%</span></label>
+                    <input type="range" id="slider-flow" min="0" max="100" value="50">
+                </div>
+
+                <div class="control-group">
+                    <label>Heat Extraction <span id="lbl-extract">50%</span></label>
+                    <input type="range" id="slider-extract" min="0" max="100" value="50">
+                </div>
+            </div>
+            
+            <div style="font-size: 0.7rem; color: #666; text-align: center;">
+                Toy model for visualization.<br>
+                Meltdown possible > 3000°C.
+            </div>
+        </div>
+    </div>
+
+    <!-- TOOLTIP -->
+    <div id="tooltip">
+        <h4>Component Name</h4>
+        <p>Description goes here.</p>
+    </div>
+
+    <!-- ONBOARDING MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-content">
+            <h2>Nuclear Reactor Simulation</h2>
+            <p style="color: #ffcc00; border: 1px solid #ffcc00; padding: 10px; border-radius: 4px;">
+                <strong>AUDIO ENABLED</strong><br>
+                <strong>EDUCATIONAL VISUALIZATION ONLY</strong><br>
+                This simulation includes sound effects and a visual depiction of a "Meltdown" scenario.
+                It is NOT a technical guide for real-world engineering.
+            </p>
+            <ul>
+                <li><strong>Meltdown Risk:</strong> If Core Temp exceeds 3000°C, the core will suffer catastrophic failure.</li>
+                <li><strong>Sound:</strong> Hear the reactor hum and Geiger counters.</li>
+                <li><strong>Speed Control:</strong> Use the speed slider to fast-forward thermal reactions.</li>
+            </ul>
+            <button id="btn-enter-sim" class="start-sim-btn">Enter Simulation</button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- 1. AUDIO CONTROLLER (Web Audio API) ---
+        class AudioController {
+            constructor() {
+                this.ctx = null;
+                this.humOsc = null;
+                this.humGain = null;
+                this.sirenOsc = null;
+                this.sirenGain = null;
+                this.isMuted = false;
+                this.initialized = false;
+            }
+
+            init() {
+                if (this.initialized) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+
+                // Reactor Hum (Low frequency sine)
+                this.humOsc = this.ctx.createOscillator();
+                this.humOsc.type = 'sine';
+                this.humGain = this.ctx.createGain();
+                this.humOsc.connect(this.humGain);
+                this.humGain.connect(this.ctx.destination);
+                this.humOsc.frequency.value = 50;
+                this.humGain.gain.value = 0;
+                this.humOsc.start();
+
+                // Alarm Siren (Square wave with modulation)
+                this.sirenOsc = this.ctx.createOscillator();
+                this.sirenOsc.type = 'square';
+                this.sirenGain = this.ctx.createGain();
+                this.sirenOsc.connect(this.sirenGain);
+                this.sirenGain.connect(this.ctx.destination);
+                this.sirenOsc.frequency.value = 800;
+                this.sirenGain.gain.value = 0;
+                this.sirenOsc.start();
+
+                this.initialized = true;
+            }
+
+            update(power, isAlarm, isMeltdown) {
+                if (!this.initialized || this.isMuted) return;
+
+                // 1. Hum Logic (Based on power)
+                // Pitch 50Hz -> 120Hz, Gain 0 -> 0.2
+                const targetFreq = 50 + (power * 0.8);
+                this.humOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+                
+                // If meltdown, hum dies
+                const targetGain = isMeltdown ? 0 : (power / 100) * 0.15;
+                this.humGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
+
+                // 2. Siren Logic
+                if (isAlarm && !isMeltdown) {
+                    this.sirenGain.gain.setTargetAtTime(0.1, this.ctx.currentTime, 0.1);
+                    // Modulate frequency for wailing sound
+                    const time = this.ctx.currentTime;
+                    this.sirenOsc.frequency.value = 800 + Math.sin(time * 10) * 200;
+                } else {
+                    this.sirenGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+                }
+
+                // 3. Geiger Click (Procedural clicks)
+                // Probability increases with power
+                if (!isMeltdown && Math.random() < (power / 5000)) {
+                    this.playClick();
+                }
+            }
+
+            playClick() {
+                if (this.isMuted) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.value = 1000 + Math.random() * 500;
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.00001, this.ctx.currentTime + 0.05);
+                osc.stop(this.ctx.currentTime + 0.05);
+            }
+
+            playScramSound() {
+                if (!this.initialized || this.isMuted) return;
+                // Low thud
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.frequency.value = 150;
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.5);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+                osc.stop(this.ctx.currentTime + 0.5);
+            }
+            
+            toggleMute(mute) {
+                this.isMuted = mute;
+                if(mute && this.initialized) {
+                    this.humGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+                    this.sirenGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+                } else if (!mute && this.initialized) {
+                    this.ctx.resume();
+                }
+            }
+        }
+
+        const audio = new AudioController();
+
+        // --- 2. SIMULATION STATE ---
+        const STATE = {
+            isRunning: true,
+            time: 0,
+            timeScale: 1.0,
+            
+            // Inputs (0-100 range)
+            targetPower: 50,
+            rodInsertion: 100, 
+            coolantFlow: 50,
+            heatExtraction: 50,
+
+            // Derived Physics Values
+            coreTemp: 25,    
+            currentPower: 0, 
+            pressure: 1.0,   
+            reactivity: 0,   
+
+            // History for charts
+            historySize: 100,
+            historyPower: new Array(100).fill(0),
+            historyTemp: new Array(100).fill(25),
+
+            // Visual flags
+            isScrammed: false,
+            alarmState: false,
+            meltdown: false
+        };
+
+        const CONSTANTS = {
+            BASE_REACTIVITY: 0.05,
+            HEATING_COEFF: 0.5,
+            COOLING_COEFF: 0.8,
+            AMBIENT_TEMP: 25,
+            MELTDOWN_TEMP: 3000 // Real consequence threshold
+        };
+
+        // --- 3. THREE.JS SCENE ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0b0d14, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(15, 12, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x0b0d14);
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.maxPolarAngle = Math.PI / 2 - 0.1; 
+        controls.minDistance = 5;
+        controls.maxDistance = 40;
+        controls.target.set(0, 2, 0);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); 
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+        const pointLight = new THREE.PointLight(0x00f0ff, 2, 50);
+        pointLight.position.set(5, 10, 5);
+        scene.add(pointLight);
+        
+        const glowLight = new THREE.PointLight(0xffaa00, 0, 20);
+        glowLight.position.set(0, 2, 0);
+        scene.add(glowLight);
+        
+        // Disaster Light (Red for Meltdown)
+        const disasterLight = new THREE.PointLight(0xff0000, 0, 50);
+        disasterLight.position.set(0, 5, 0);
+        scene.add(disasterLight);
+
+        // --- SCENE OBJECTS ---
+        const reactorGroup = new THREE.Group();
+        scene.add(reactorGroup);
+
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.4, metalness: 0.8 });
+        const fuelMat = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0x000000, roughness: 0.2, metalness: 0.5 });
+        const rodMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5, metalness: 0.5 });
+        const shellMat = new THREE.MeshPhysicalMaterial({
+            color: 0xaaccff, transmission: 0.9, opacity: 0.3, metalness: 0, roughness: 0, ior: 1.5, thickness: 0.5, transparent: true, side: THREE.DoubleSide
+        });
+        // Corium Material (Meltdown Slag)
+        const coriumMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff2200, emissiveIntensity: 2, roughness: 1.0 });
+
+        // Shell
+        const shellGeo = new THREE.CylinderGeometry(5, 5, 12, 32, 1, true);
+        const shell = new THREE.Mesh(shellGeo, shellMat);
+        shell.position.y = 6;
+        shell.userData = { name: "Containment Vessel", desc: "Sealed structure." };
+        reactorGroup.add(shell);
+
+        // Base
+        const baseGeo = new THREE.CylinderGeometry(6, 7, 1, 32);
+        const base = new THREE.Mesh(baseGeo, metalMat);
+        base.position.y = 0.5;
+        reactorGroup.add(base);
+
+        // Fuel (Instanced)
+        const fuelCount = 36; 
+        const fuelGeo = new THREE.BoxGeometry(0.5, 6, 0.5);
+        const fuelMesh = new THREE.InstancedMesh(fuelGeo, fuelMat, fuelCount);
+        fuelMesh.userData = { name: "Fuel Assembly", desc: "Uranium fuel. Generates heat." };
+        
+        const dummy = new THREE.Object3D();
+        const gridSize = 6;
+        const spacing = 0.8;
+        const offset = (gridSize * spacing) / 2 - (spacing/2);
+        
+        let idx = 0;
+        for(let x=0; x<gridSize; x++) {
+            for(let z=0; z<gridSize; z++) {
+                dummy.position.set(x*spacing - offset, 4, z*spacing - offset);
+                dummy.updateMatrix();
+                fuelMesh.setMatrixAt(idx, dummy.matrix);
+                idx++;
+            }
+        }
+        reactorGroup.add(fuelMesh);
+
+        // Rods
+        const rodGeo = new THREE.CylinderGeometry(0.15, 0.15, 6, 16);
+        const rodMesh = new THREE.InstancedMesh(rodGeo, rodMat, fuelCount);
+        rodMesh.userData = { name: "Control Rod", desc: "Absorbs neutrons." };
+        idx = 0;
+        for(let x=0; x<gridSize; x++) {
+            for(let z=0; z<gridSize; z++) {
+                dummy.position.set(x*spacing - offset, 4, z*spacing - offset); 
+                dummy.updateMatrix();
+                rodMesh.setMatrixAt(idx, dummy.matrix);
+                idx++;
+            }
+        }
+        reactorGroup.add(rodMesh);
+
+        // Particles
+        const particleCount = 400; // More particles for meltdown
+        const particlesGeo = new THREE.BufferGeometry();
+        const particlePositions = new Float32Array(particleCount * 3);
+        const particleVelocities = []; // Store velocity
+        for(let i=0; i<particleCount; i++) {
+            particlePositions[i*3] = (Math.random() - 0.5) * 5;
+            particlePositions[i*3+1] = Math.random() * 10;
+            particlePositions[i*3+2] = (Math.random() - 0.5) * 5;
+            particleVelocities.push({y: Math.random() * 0.1, x: (Math.random()-0.5)*0.05, z: (Math.random()-0.5)*0.05});
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        const particleMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, transparent: true, opacity: 0.0 });
+        const particleSystem = new THREE.Points(particlesGeo, particleMat);
+        reactorGroup.add(particleSystem);
+
+        // --- 4. INTERACTION ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects([shell, fuelMesh, rodMesh]);
+            
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                if(obj.userData.name) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = event.clientX + 15 + 'px';
+                    tooltip.style.top = event.clientY + 15 + 'px';
+                    tooltip.innerHTML = `<h4>${obj.userData.name}</h4><p>${obj.userData.desc}</p>`;
+                }
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+        window.addEventListener('mousemove', onMouseMove);
+
+        // --- 5. SIMULATION LOGIC ---
+        function updatePhysics(realDt) {
+            if(!STATE.isRunning) return;
+
+            // Apply Time Scale
+            const dt = realDt * STATE.timeScale;
+            STATE.time += dt;
+
+            if(STATE.meltdown) {
+                // In meltdown, temp stays high, simulation is "broken"
+                STATE.coreTemp += dt * 10; // Runaway thermal
+                return;
+            }
+
+            // 1. Reactivity
+            const rodFactor = STATE.rodInsertion / 100; 
+            const rodInfluence = -0.2 * rodFactor; 
+            const positiveInfluence = 0.1 * (STATE.targetPower / 100); 
+            const noise = (Math.random() - 0.5) * 0.01;
+            STATE.reactivity = CONSTANTS.BASE_REACTIVITY + rodInfluence + positiveInfluence + noise;
+
+            // 2. Power
+            let powerPotential = Math.max(0, STATE.reactivity * 500);
+            STATE.currentPower += (powerPotential - STATE.currentPower) * 0.05;
+            STATE.currentPower = Math.max(0, Math.min(STATE.currentPower, 150)); // Allow overload
+
+            // 3. Temp
+            const heatIn = STATE.currentPower * CONSTANTS.HEATING_COEFF;
+            const coolingEff = (STATE.coolantFlow / 100) * CONSTANTS.COOLING_COEFF;
+            const extractionEff = (STATE.heatExtraction / 100) * 0.2;
+            const heatOut = (STATE.coreTemp - CONSTANTS.AMBIENT_TEMP) * (coolingEff + extractionEff);
+
+            STATE.coreTemp += (heatIn - heatOut) * dt * 5;
+            STATE.coreTemp = Math.max(CONSTANTS.AMBIENT_TEMP, STATE.coreTemp);
+
+            // 4. Pressure
+            STATE.pressure = 1.0 + (STATE.coreTemp - 100) * 0.01; 
+            STATE.pressure = Math.max(1.0, STATE.pressure);
+
+            // 5. Alarm & Meltdown Check
+            if (STATE.coreTemp > 800) STATE.alarmState = true;
+            else STATE.alarmState = false;
+
+            // --- REAL MELTDOWN TRIGGER ---
+            if (STATE.coreTemp > CONSTANTS.MELTDOWN_TEMP) {
+                triggerMeltdown();
+            }
+
+            // 6. History
+            if (Math.floor(STATE.time * 10) % 5 === 0) {
+                STATE.historyPower.push(STATE.currentPower);
+                STATE.historyPower.shift();
+                STATE.historyTemp.push(STATE.coreTemp);
+                STATE.historyTemp.shift();
+            }
+        }
+
+        function triggerMeltdown() {
+            STATE.meltdown = true;
+            STATE.alarmState = true;
+            document.getElementById('meltdown-alert').style.display = 'block';
+            
+            // Change lighting to disaster mode
+            glowLight.intensity = 0;
+            pointLight.intensity = 0;
+            disasterLight.intensity = 10;
+            
+            // Change Shell to look breached/burnt
+            shellMat.color.setHex(0x331100);
+            shellMat.opacity = 0.8;
+            shellMat.roughness = 1.0;
+            
+            console.log("CRITICAL FAILURE: MELTDOWN");
+        }
+
+        function updateVisuals() {
+            const t = STATE.coreTemp;
+            const nT = Math.min(t / 1000, 1); 
+
+            if(!STATE.meltdown) {
+                // Normal Rod Animation
+                const targetY = 4 + ((100 - STATE.rodInsertion) / 100) * 3.5;
+                
+                let currentMatrix = new THREE.Matrix4();
+                let position = new THREE.Vector3();
+                let quaternion = new THREE.Quaternion();
+                let scale = new THREE.Vector3();
+
+                for(let i=0; i<fuelCount; i++){
+                    rodMesh.getMatrixAt(i, currentMatrix);
+                    currentMatrix.decompose(position, quaternion, scale);
+                    position.y += (targetY - position.y) * 0.1;
+                    currentMatrix.compose(position, quaternion, scale);
+                    rodMesh.setMatrixAt(i, currentMatrix);
+                }
+                rodMesh.instanceMatrix.needsUpdate = true;
+
+                // Fuel Color
+                const color = new THREE.Color();
+                if(nT < 0.3) color.setHSL(0, 0, 0.2 + nT); 
+                else if(nT < 0.6) color.setHSL(0.05, 1.0, 0.5 * (nT/0.6)); 
+                else color.setHSL(0.1, 1.0, 0.5 + (nT-0.6));
+                
+                for(let i=0; i<fuelCount; i++) fuelMesh.setColorAt(i, color);
+                fuelMesh.instanceColor.needsUpdate = true;
+                glowLight.intensity = nT * 5;
+                glowLight.color.copy(color);
+            } 
+            else {
+                // --- MELTDOWN VISUALS ---
+                // Distort geometries (Melting Effect)
+                let currentMatrix = new THREE.Matrix4();
+                let position = new THREE.Vector3();
+                let quaternion = new THREE.Quaternion();
+                let scale = new THREE.Vector3();
+
+                // Melt Fuel Rods downwards and squash them
+                for(let i=0; i<fuelCount; i++){
+                    fuelMesh.getMatrixAt(i, currentMatrix);
+                    currentMatrix.decompose(position, quaternion, scale);
+                    
+                    scale.y *= 0.99; // Shrink vertically
+                    scale.x *= 1.01; // Expand horizontally (melt pool)
+                    scale.z *= 1.01;
+                    position.y *= 0.99; // Drop down
+
+                    // Add jitter
+                    position.x += (Math.random()-0.5)*0.05;
+                    position.z += (Math.random()-0.5)*0.05;
+                    
+                    currentMatrix.compose(position, quaternion, scale);
+                    fuelMesh.setMatrixAt(i, currentMatrix);
+                    // Turn them into black slag color
+                    fuelMesh.setColorAt(i, new THREE.Color(0x000000));
+                }
+                fuelMesh.instanceMatrix.needsUpdate = true;
+                fuelMesh.instanceColor.needsUpdate = true;
+                
+                // Shake Camera violently
+                camera.position.x += (Math.random() - 0.5) * 0.5;
+                camera.position.y += (Math.random() - 0.5) * 0.5;
+                camera.position.z += (Math.random() - 0.5) * 0.5;
+            }
+
+            // Particles Logic
+            const positions = particleSystem.geometry.attributes.position.array;
+            // More opacity/chaos with heat
+            particleMat.opacity = STATE.meltdown ? 0.8 : Math.min((t - 100) / 500, 0.5);
+            particleMat.color.setHex(STATE.meltdown ? 0x333333 : 0xffffff); // Smoke vs Steam
+
+            for(let i=0; i<particleCount; i++) {
+                let idx = i * 3;
+                let vy = particleVelocities[i].y;
+                
+                if(STATE.meltdown) vy *= 2; // Fast smoke
+
+                positions[idx+1] += vy + (nT * 0.1); // Y move
+                positions[idx] += particleVelocities[i].x + (Math.random()-0.5)*0.02;
+                positions[idx+2] += particleVelocities[i].z;
+
+                if(positions[idx+1] > 10) { // Reset
+                    positions[idx+1] = 0.5;
+                    positions[idx] = (Math.random() - 0.5) * 5;
+                    positions[idx+2] = (Math.random() - 0.5) * 5;
+                }
+            }
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+
+            // Camera Shake on Alarm (Pre-meltdown)
+            if(STATE.alarmState && !STATE.meltdown) {
+                camera.position.x += (Math.random() - 0.5) * 0.05;
+                camera.position.y += (Math.random() - 0.5) * 0.05;
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('val-power').innerText = STATE.currentPower.toFixed(1) + '%';
+            document.getElementById('val-temp').innerText = Math.floor(STATE.coreTemp) + '°C';
+            document.getElementById('val-pressure').innerText = STATE.pressure.toFixed(2);
+            
+            const minutes = Math.floor(STATE.time / 60);
+            const seconds = Math.floor(STATE.time % 60);
+            document.getElementById('val-time').innerText = `${minutes}:${seconds.toString().padStart(2,'0')}`;
+            document.getElementById('lbl-speed').innerText = STATE.timeScale.toFixed(1) + 'x';
+
+            const tempEl = document.getElementById('val-temp');
+            if(STATE.coreTemp > CONSTANTS.MELTDOWN_TEMP) { tempEl.style.color = 'magenta'; tempEl.innerText = "ERR"; }
+            else if(STATE.coreTemp > 800) tempEl.style.color = 'red';
+            else if(STATE.coreTemp > 300) tempEl.style.color = 'orange';
+            else tempEl.style.color = '#00f0ff';
+
+            // Sync labels
+            document.getElementById('lbl-target').innerText = document.getElementById('slider-target').value + '%';
+            document.getElementById('lbl-rods').innerText = document.getElementById('slider-rods').value + '%';
+            document.getElementById('lbl-flow').innerText = document.getElementById('slider-flow').value + '%';
+            document.getElementById('lbl-extract').innerText = document.getElementById('slider-extract').value + '%';
+        }
+
+        function drawChart() {
+            const cvs = document.getElementById('chart-canvas');
+            const ctx = cvs.getContext('2d');
+            const w = cvs.width;
+            const h = cvs.height;
+            ctx.clearRect(0, 0, w, h);
+
+            // Power
+            ctx.beginPath();
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            for(let i=0; i<STATE.historySize; i++) {
+                const val = STATE.historyPower[i];
+                const x = (i / (STATE.historySize-1)) * w;
+                const y = h - ((val / 150) * h);
+                if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Temp
+            ctx.beginPath();
+            ctx.strokeStyle = '#ff3333';
+            for(let i=0; i<STATE.historySize; i++) {
+                const val = STATE.historyTemp[i];
+                const x = (i / (STATE.historySize-1)) * w;
+                const y = h - ((Math.min(val, 2000) / 2000) * h);
+                if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // --- 6. EVENTS ---
+        document.getElementById('slider-target').addEventListener('input', (e) => STATE.targetPower = parseFloat(e.target.value));
+        document.getElementById('slider-rods').addEventListener('input', (e) => {
+            STATE.rodInsertion = parseFloat(e.target.value);
+            STATE.isScrammed = false;
+            document.getElementById('btn-scram').style.backgroundColor = '#ff3333';
+        });
+        document.getElementById('slider-flow').addEventListener('input', (e) => STATE.coolantFlow = parseFloat(e.target.value));
+        document.getElementById('slider-extract').addEventListener('input', (e) => STATE.heatExtraction = parseFloat(e.target.value));
+        document.getElementById('slider-speed').addEventListener('input', (e) => STATE.timeScale = parseFloat(e.target.value));
+
+        document.getElementById('btn-start').addEventListener('click', () => { STATE.isRunning = true; audio.init(); });
+        document.getElementById('btn-enter-sim').addEventListener('click', () => { 
+            document.getElementById('modal-overlay').style.display='none';
+            audio.init();
+        });
+        document.getElementById('btn-pause').addEventListener('click', () => STATE.isRunning = false);
+        document.getElementById('btn-reset').addEventListener('click', () => location.reload()); // Hard reset for meltdown
+        
+        document.getElementById('btn-scram').addEventListener('click', triggerScram);
+        document.getElementById('audio-toggle').addEventListener('change', (e) => audio.toggleMute(!e.target.checked));
+
+        function triggerScram() {
+            if(STATE.meltdown) return; // Too late
+            STATE.isScrammed = true;
+            STATE.rodInsertion = 100;
+            document.getElementById('slider-rods').value = 100;
+            STATE.targetPower = 0;
+            document.getElementById('slider-target').value = 0;
+            document.getElementById('btn-scram').style.backgroundColor = '#500';
+            audio.playScramSound();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key === 's' || e.key === 'S') triggerScram();
+            if(e.key === ' ') STATE.isRunning = !STATE.isRunning;
+            if(e.key === 'r' || e.key === 'R') location.reload();
+        });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 7. LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            
+            updatePhysics(dt);
+            updateVisuals();
+            updateUI();
+            drawChart();
+            
+            // Update Audio
+            audio.update(STATE.currentPower, STATE.alarmState, STATE.meltdown);
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>

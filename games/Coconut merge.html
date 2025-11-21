@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coco's Island Rampage: Audio Edition</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 0px #000;
+            pointer-events: none;
+            user-select: none;
+            z-index: 10;
+        }
+        h1 { margin: 0; font-size: 40px; color: #FFD700; -webkit-text-stroke: 1px #d35400; }
+        #score { font-size: 24px; font-weight: bold; }
+        #size { font-size: 20px; color: #eee; }
+        #boss-meter {
+            margin-top: 10px;
+            color: #ff6b6b;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #start-screen, #victory {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+        }
+        #victory { display: none; }
+        h2 { font-size: 50px; color: #FFD700; margin-bottom: 10px; text-shadow: 4px 4px #d35400; }
+        p { font-size: 20px; max-width: 600px; text-align: center; line-height: 1.5; }
+        button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 24px;
+            cursor: pointer;
+            border-radius: 15px;
+            margin-top: 30px;
+            font-weight: bold;
+            box-shadow: 0 5px 0 #d32f2f;
+            transition: transform 0.1s;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 1px 0 #d32f2f; }
+        button:hover { background: #ff5252; }
+    </style>
+    <!-- Load Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+</head>
+<body>
+
+<div id="ui">
+    <h1>COCO'S RAMPAGE</h1>
+    <div id="score">Mass: 0</div>
+    <div id="size">Size: 1.00m</div>
+    <div id="boss-meter">Next Target: PEBBLES</div>
+</div>
+
+<div id="instructions">WASD to Roll &middot; SPACE to Jump &middot; Chase Tourists &middot; EAT THE VOLCANO</div>
+
+<div id="start-screen">
+    <h2>COCO'S RAMPAGE</h2>
+    <p>You are a sentient coconut. Grow bigger by rolling over items.<br>Eat the tourists. Eat the houses. Eat the Volcano.</p>
+    <button id="start-btn">CLICK TO START</button>
+</div>
+
+<div id="victory">
+    <h1 style="color:white; -webkit-text-stroke: 0; font-size: 60px;">ISLAND DOMINATED!</h1>
+    <p>You ate the Volcano and became a God!</p>
+    <button onclick="location.reload()">Play Again</button>
+</div>
+
+<script>
+    // --- Audio Engine (Procedural Web Audio API) ---
+    const AudioEngine = {
+        ctx: null,
+        isPlaying: false,
+        
+        init: function() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+            this.playMusic();
+        },
+
+        playTone: function(freq, type, duration, vol = 0.1, slideTo = null) {
+            if(!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            if(slideTo) {
+                osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
+            }
+
+            gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + duration);
+        },
+
+        playNoise: function(duration, vol = 0.1) {
+            if(!this.ctx) return;
+            const bufferSize = this.ctx.sampleRate * duration;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const gain = this.ctx.createGain();
+            
+            // Filter for a "thud" sound
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 100;
+
+            gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start();
+        },
+
+        // SFX Presets
+        sfx: {
+            jump: () => AudioEngine.playTone(150, 'sine', 0.3, 0.2, 600), // Slide up
+            eat: () => {
+                // Satisfying "pop" chord
+                const base = 400 + Math.random() * 200;
+                AudioEngine.playTone(base, 'triangle', 0.1, 0.1);
+                AudioEngine.playTone(base * 1.5, 'sine', 0.1, 0.05);
+            },
+            eatBig: () => {
+                // Deeper crunch
+                AudioEngine.playNoise(0.3, 0.2);
+                AudioEngine.playTone(100, 'square', 0.2, 0.1, 50);
+            },
+            bump: () => AudioEngine.playNoise(0.1, 0.2), // Thud
+            win: () => {
+                // Victory Arpeggio
+                [0, 200, 400, 600, 800, 1000].forEach((delay, i) => {
+                    setTimeout(() => AudioEngine.playTone(440 + (i*100), 'sine', 0.5, 0.2), delay);
+                });
+            }
+        },
+
+        // Procedural Music Loop (Marimba-ish)
+        playMusic: function() {
+            const ctx = this.ctx;
+            let noteTime = ctx.currentTime;
+            const tempo = 0.25; // Seconds per note
+            
+            // Tropical scale (Pentatonic-ish)
+            const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
+            
+            const scheduler = () => {
+                if(!this.isPlaying) return;
+                
+                while(noteTime < ctx.currentTime + 0.1) {
+                    // Bass
+                    if (Math.random() > 0.5) {
+                        this.playTone(scale[0] / 2, 'triangle', 0.1, 0.05);
+                    }
+                    
+                    // Melody
+                    if (Math.random() > 0.3) {
+                        const note = scale[Math.floor(Math.random() * scale.length)];
+                        this.playTone(note, 'sine', 0.1, 0.03);
+                    }
+
+                    noteTime += tempo;
+                }
+                requestAnimationFrame(scheduler);
+            };
+            this.isPlaying = true;
+            scheduler();
+        }
+    };
+
+    // --- Game Configuration ---
+    const CONFIG = {
+        baseSpeed: 15,
+        jumpForce: 12,
+        gravity: 30,
+        colors: {
+            sky: 0x87CEEB,
+            sand: 0xF4A460,
+            water: 0x40a4df,
+            coconut: 0x8B4513,
+            coconutDark: 0x5D2906
+        }
+    };
+
+    // --- State ---
+    let scene, camera, renderer;
+    let player; // Physics container
+    let playerMesh; // Visual mesh
+    let objects = []; // Collectables
+    let particles = []; // Explosion particles
+    let clock = new THREE.Clock();
+    let keys = { w: false, a: false, s: false, d: false, space: false };
+    let velocity = new THREE.Vector3();
+    let playerRadius = 1;
+    let score = 0;
+    let shakeIntensity = 0;
+    let gameActive = false;
+    
+    const collectedObjects = new THREE.Group();
+    let volcano; 
+
+    // --- Init Sequence ---
+    document.getElementById('start-btn').addEventListener('click', () => {
+        document.getElementById('start-screen').style.display = 'none';
+        gameActive = true;
+        AudioEngine.init();
+        initGame();
+    });
+
+    function initGame() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(CONFIG.colors.sky);
+        scene.fog = new THREE.Fog(CONFIG.colors.sky, 30, 150);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+        camera.position.set(0, 5, 15);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 300;
+        dirLight.shadow.camera.left = -100;
+        dirLight.shadow.camera.right = 100;
+        dirLight.shadow.camera.top = 100;
+        dirLight.shadow.camera.bottom = -100;
+        scene.add(dirLight);
+
+        createGround();
+        createPlayer();
+        generateLevel();
+        createVolcano();
+
+        // Listeners
+        window.addEventListener('resize', onWindowResize, false);
+        document.addEventListener('keydown', (e) => onKey(e, true), false);
+        document.addEventListener('keyup', (e) => onKey(e, false), false);
+
+        animate();
+    }
+
+    function createGround() {
+        const groundGeo = new THREE.PlaneGeometry(300, 300, 64, 64);
+        const posAttribute = groundGeo.attributes.position;
+        const simplex = new SimplexNoise();
+        for (let i = 0; i < posAttribute.count; i++) {
+            const x = posAttribute.getX(i);
+            const y = posAttribute.getY(i);
+            const dist = Math.sqrt(x*x + y*y);
+            let z = simplex.noise2D(x * 0.03, y * 0.03) * 2;
+            if(dist > 100) z -= (dist - 100) * 0.5;
+            posAttribute.setZ(i, z);
+        }
+        groundGeo.computeVertexNormals();
+
+        const groundMat = new THREE.MeshStandardMaterial({ 
+            color: CONFIG.colors.sand,
+            roughness: 1,
+            flatShading: true
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        const waterGeo = new THREE.PlaneGeometry(500, 500);
+        const waterMat = new THREE.MeshBasicMaterial({ color: CONFIG.colors.water, transparent: true, opacity: 0.8 });
+        const water = new THREE.Mesh(waterGeo, waterMat);
+        water.rotation.x = -Math.PI / 2;
+        water.position.y = -2;
+        scene.add(water);
+    }
+
+    function createPlayer() {
+        player = new THREE.Object3D();
+        player.position.set(0, 5, 20);
+        scene.add(player);
+
+        playerMesh = new THREE.Group();
+        player.add(playerMesh);
+
+        const geo = new THREE.SphereGeometry(1, 16, 16);
+        const mat = new THREE.MeshStandardMaterial({ 
+            color: CONFIG.colors.coconut, 
+            roughness: 0.9,
+            map: createCoconutTexture() 
+        });
+        const body = new THREE.Mesh(geo, mat);
+        body.castShadow = true;
+        playerMesh.add(body);
+
+        const eyeGeo = new THREE.SphereGeometry(0.15, 8, 8);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+        leftEye.position.set(-0.3, 0.3, 0.85);
+        playerMesh.add(leftEye);
+        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+        rightEye.position.set(0.3, 0.3, 0.85);
+        playerMesh.add(rightEye);
+
+        const mouthGeo = new THREE.TorusGeometry(0.2, 0.05, 8, 8, Math.PI);
+        const mouthMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+        mouth.position.set(0, 0.1, 0.9);
+        mouth.rotation.x = Math.PI;
+        playerMesh.add(mouth);
+
+        const hairGeo = new THREE.ConeGeometry(0.2, 0.6, 8);
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x55aa55, emissive: 0x225522 });
+        const hair = new THREE.Mesh(hairGeo, hairMat);
+        hair.position.set(0, 1.2, 0);
+        hair.rotation.x = -0.2;
+        playerMesh.add(hair);
+
+        playerMesh.add(collectedObjects);
+    }
+
+    function createCoconutTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(0,0,256,256);
+        for(let i=0; i<500; i++) {
+            ctx.beginPath();
+            ctx.moveTo(Math.random()*256, Math.random()*256);
+            ctx.lineTo(Math.random()*256, Math.random()*256);
+            ctx.strokeStyle = Math.random() > 0.5 ? '#5D2906' : '#A0522D';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    function createVolcano() {
+        const geo = new THREE.ConeGeometry(15, 20, 16, 1, true);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true });
+        volcano = new THREE.Mesh(geo, mat);
+        
+        const lavaGeo = new THREE.CircleGeometry(10, 16);
+        const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+        const lava = new THREE.Mesh(lavaGeo, lavaMat);
+        lava.rotation.x = -Math.PI/2;
+        lava.position.y = 10;
+        volcano.add(lava);
+
+        volcano.position.set(0, 0, 0);
+        
+        volcano.userData = { 
+            canBeEaten: true, 
+            weight: 12.0, 
+            isBoss: true,
+            originalScale: volcano.scale.clone()
+        };
+        
+        volcano.position.y = 8; 
+        scene.add(volcano);
+        objects.push(volcano);
+    }
+
+    function generateLevel() {
+        const genFuncs = [
+            { func: createPebble, count: 60, weight: 0.3 },
+            { func: createShell, count: 40, weight: 0.5 },
+            { func: createCrab, count: 20, weight: 0.8, mobile: true, speed: 2 },
+            { func: createBeachBall, count: 15, weight: 1.2, mobile: true, speed: 1 },
+            { func: createTourist, count: 20, weight: 1.5, mobile: true, speed: 6 },
+            { func: createPalmTree, count: 15, weight: 2.5 },
+            { func: createTikiStatue, count: 8, weight: 3.5 },
+            { func: createHouse, count: 5, weight: 6.0 }
+        ];
+
+        genFuncs.forEach(type => {
+            for(let i=0; i<type.count; i++) {
+                const obj = type.func();
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 20 + Math.random() * 100;
+                obj.position.x = Math.cos(angle) * radius;
+                obj.position.z = Math.sin(angle) * radius;
+                obj.position.y = 0; 
+                obj.rotation.y = Math.random() * Math.PI * 2;
+                
+                obj.userData = { 
+                    canBeEaten: true, 
+                    weight: type.weight, 
+                    originalScale: obj.scale.clone(),
+                    mobile: type.mobile || false,
+                    speed: type.speed || 0,
+                    velocity: new THREE.Vector3()
+                };
+
+                scene.add(obj);
+                objects.push(obj);
+            }
+        });
+    }
+
+    // --- Object Creators ---
+    function createTourist() {
+        const group = new THREE.Group();
+        const bodyGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.2, 8);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: Math.random() > 0.5 ? 0xffaaaa : 0xaa5533 });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 0.6;
+        group.add(body);
+        
+        const shirtGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.4, 8);
+        const shirtMat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+        const shirt = new THREE.Mesh(shirtGeo, shirtMat);
+        shirt.position.y = 0.5;
+        group.add(shirt);
+
+        const armGeo = new THREE.BoxGeometry(0.8, 0.1, 0.1);
+        const armMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const arms = new THREE.Mesh(armGeo, armMat);
+        arms.position.y = 0.7;
+        group.add(arms);
+        return group;
+    }
+
+    function createHouse() {
+        const group = new THREE.Group();
+        const baseGeo = new THREE.BoxGeometry(4, 3, 4);
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const base = new THREE.Mesh(baseGeo, baseMat);
+        base.position.y = 1.5;
+        group.add(base);
+
+        const roofGeo = new THREE.ConeGeometry(3.5, 2, 4);
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x884400 });
+        const roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.rotation.y = Math.PI/4;
+        roof.position.y = 4;
+        group.add(roof);
+        return group;
+    }
+
+    function createPebble() {
+        const geo = new THREE.DodecahedronGeometry(0.2 + Math.random()*0.2);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.y = 0.2;
+        return mesh;
+    }
+
+    function createShell() {
+        const geo = new THREE.ConeGeometry(0.2, 0.5, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xffdddd });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.rotation.x = Math.PI / 2;
+        mesh.position.y = 0.1;
+        return mesh;
+    }
+
+    function createBeachBall() {
+        const geo = new THREE.SphereGeometry(0.6, 12, 12);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xff3333 }); 
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.y = 0.6;
+        return mesh;
+    }
+
+    function createCrab() {
+        const group = new THREE.Group();
+        const bodyGeo = new THREE.BoxGeometry(0.6, 0.3, 0.4);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xff6b6b });
+        const body = new THREE.Mesh(bodyGeo, mat);
+        body.position.y = 0.3;
+        group.add(body);
+        return group;
+    }
+
+    function createPalmTree() {
+        const group = new THREE.Group();
+        const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 3, 7);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.y = 1.5;
+        group.add(trunk);
+        const leavesGeo = new THREE.ConeGeometry(1.5, 1, 6);
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+        const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+        leaves.position.y = 3;
+        group.add(leaves);
+        return group;
+    }
+
+    function createTikiStatue() {
+        const geo = new THREE.BoxGeometry(1.5, 4, 1.5);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x654321 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.y = 2;
+        return mesh;
+    }
+
+    // --- Particles ---
+    function spawnParticles(pos, color) {
+        for(let i=0; i<8; i++) {
+            const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            const mat = new THREE.MeshBasicMaterial({ color: color });
+            const p = new THREE.Mesh(geo, mat);
+            p.position.copy(pos);
+            p.userData = {
+                vel: new THREE.Vector3((Math.random()-0.5)*10, Math.random()*10, (Math.random()-0.5)*10),
+                life: 1.0
+            };
+            scene.add(p);
+            particles.push(p);
+        }
+    }
+
+    function updateParticles(dt) {
+        for(let i=particles.length-1; i>=0; i--) {
+            const p = particles[i];
+            p.userData.life -= dt * 2;
+            if(p.userData.life <= 0) {
+                scene.remove(p);
+                particles.splice(i, 1);
+                continue;
+            }
+            p.position.addScaledVector(p.userData.vel, dt);
+            p.userData.vel.y -= 20 * dt;
+            p.scale.setScalar(p.userData.life);
+            p.rotation.x += dt * 5;
+            p.rotation.y += dt * 5;
+        }
+    }
+
+    function onKey(e, pressed) {
+        const key = e.key.toLowerCase();
+        if(key === 'w' || key === 'arrowup') keys.w = pressed;
+        if(key === 'a' || key === 'arrowleft') keys.a = pressed;
+        if(key === 's' || key === 'arrowdown') keys.s = pressed;
+        if(key === 'd' || key === 'arrowright') keys.d = pressed;
+        if(key === ' ') keys.space = pressed;
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function updateBossMeter() {
+        const el = document.getElementById('boss-meter');
+        if(playerRadius < 1.5) el.innerText = "Next Target: BEACH BALLS";
+        else if(playerRadius < 2.5) el.innerText = "Next Target: PALM TREES";
+        else if(playerRadius < 4.0) el.innerText = "Next Target: TIKI GODS";
+        else if(playerRadius < 6.0) el.innerText = "Next Target: HOUSES";
+        else if(playerRadius < 12.0) el.innerText = "FINAL TARGET: THE VOLCANO";
+        else el.innerText = "EAT THE VOLCANO!";
+    }
+
+    // --- Game Loop ---
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if(!gameActive) return;
+
+        const dt = Math.min(clock.getDelta(), 0.1);
+
+        if (player) {
+            const moveDir = new THREE.Vector3();
+            if(keys.w) moveDir.z -= 1;
+            if(keys.s) moveDir.z += 1;
+            if(keys.a) moveDir.x -= 1;
+            if(keys.d) moveDir.x += 1;
+
+            const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            camForward.y = 0; camForward.normalize();
+            const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+            camRight.y = 0; camRight.normalize();
+
+            const inputVec = new THREE.Vector3();
+            if(keys.w) inputVec.add(camForward);
+            if(keys.s) inputVec.sub(camForward);
+            if(keys.a) inputVec.sub(camRight);
+            if(keys.d) inputVec.add(camRight);
+            if(inputVec.length() > 0) inputVec.normalize();
+
+            // Physics
+            velocity.x += inputVec.x * CONFIG.baseSpeed * dt;
+            velocity.z += inputVec.z * CONFIG.baseSpeed * dt;
+            velocity.x -= velocity.x * 2.0 * dt; 
+            velocity.z -= velocity.z * 2.0 * dt;
+            velocity.y -= CONFIG.gravity * dt;
+
+            player.position.x += velocity.x * dt;
+            player.position.z += velocity.z * dt;
+            player.position.y += velocity.y * dt;
+
+            // Ground Collision
+            if(player.position.y < playerRadius) {
+                player.position.y = playerRadius;
+                velocity.y = 0;
+                if(keys.space) {
+                    velocity.y = CONFIG.jumpForce;
+                    AudioEngine.sfx.jump(); // SFX
+                }
+            }
+
+            // Rolling Visuals
+            const speed = Math.sqrt(velocity.x*velocity.x + velocity.z*velocity.z);
+            if(speed > 0.1) {
+                const axis = new THREE.Vector3(velocity.z, 0, -velocity.x).normalize();
+                const angle = (speed * dt) / playerRadius;
+                const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+                playerMesh.quaternion.premultiply(q);
+            }
+
+            // --- Entity Logic ---
+            for (let i = objects.length - 1; i >= 0; i--) {
+                const obj = objects[i];
+                if (!obj.userData.canBeEaten) continue;
+
+                const dist = player.position.distanceTo(obj.position);
+                const combinedRadius = playerRadius + (obj.userData.weight * 0.5);
+
+                // AI Logic
+                if (obj.userData.mobile && dist < 15) {
+                    const runDir = new THREE.Vector3().subVectors(obj.position, player.position).normalize();
+                    runDir.y = 0;
+                    obj.position.addScaledVector(runDir, obj.userData.speed * dt);
+                    obj.lookAt(obj.position.x + runDir.x, obj.position.y, obj.position.z + runDir.z);
+                    if (obj.position.length() > 140) {} // Bounds
+                }
+
+                // Collision Logic
+                if (dist < combinedRadius) {
+                    if (playerRadius >= obj.userData.weight) {
+                        eatObject(obj, i);
+                    } else {
+                        // BUMP SFX limiting: don't play every single frame
+                        if(speed > 5 && Math.random() > 0.9) AudioEngine.sfx.bump();
+                        
+                        const pushDir = new THREE.Vector3().subVectors(obj.position, player.position).normalize();
+                        pushDir.y = 0.5;
+                        obj.position.addScaledVector(pushDir, 0.5);
+                        velocity.multiplyScalar(0.9);
+                    }
+                }
+            }
+
+            updateParticles(dt);
+
+            if(shakeIntensity > 0) shakeIntensity -= dt * 5;
+            if(shakeIntensity < 0) shakeIntensity = 0;
+
+            const targetPos = player.position.clone();
+            const zoomMult = 1 + (playerRadius * 0.5);
+            const offset = new THREE.Vector3(0, 8 * zoomMult, 12 * zoomMult);
+            
+            targetPos.add(offset);
+            
+            if(shakeIntensity > 0) {
+                targetPos.x += (Math.random()-0.5) * shakeIntensity;
+                targetPos.y += (Math.random()-0.5) * shakeIntensity;
+                targetPos.z += (Math.random()-0.5) * shakeIntensity;
+            }
+
+            camera.position.lerp(targetPos, 0.1);
+            camera.lookAt(player.position);
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    function eatObject(obj, index) {
+        scene.remove(obj);
+        objects.splice(index, 1);
+
+        // SFX
+        if(obj.userData.weight > 2.0) AudioEngine.sfx.eatBig();
+        else AudioEngine.sfx.eat();
+
+        playerMesh.worldToLocal(obj.position);
+        obj.rotation.x += Math.random(); 
+        obj.rotation.z += Math.random();
+        collectedObjects.add(obj);
+
+        spawnParticles(player.position.clone().add(new THREE.Vector3(0, playerRadius, 0)), 0xffaa00);
+        
+        const growth = obj.userData.weight * 0.05;
+        playerRadius += growth;
+        score += Math.floor(obj.userData.weight * 10);
+        
+        const body = playerMesh.children[0]; 
+        body.scale.setScalar(playerRadius);
+        
+        if(obj.userData.weight > 1.0) shakeIntensity = 1.0;
+        if(obj.userData.weight > 5.0) shakeIntensity = 3.0;
+
+        document.getElementById('score').innerText = `Mass: ${score}`;
+        document.getElementById('size').innerText = `Size: ${playerRadius.toFixed(2)}m`;
+        updateBossMeter();
+        
+        if(obj.userData.isBoss) {
+            document.getElementById('victory').style.display = 'flex';
+            shakeIntensity = 5.0;
+            AudioEngine.sfx.win();
+        }
+    }
+
+</script>
+</body>
+</html>

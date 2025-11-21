@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard - AI Playground</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Admin Layout */
+        body { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        header { margin-bottom: 2rem; }
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .admin-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Form Styles */
+        .admin-card { background: #1a1a20; padding: 2rem; border-radius: 12px; border: 1px solid #333; }
+        label { display: block; margin-top: 1rem; color: #aaa; margin-bottom: 0.5rem; font-size: 0.9rem; }
+        input, select { width: 100%; box-sizing: border-box; background: #111; color: white; border: 1px solid #444; padding: 10px; border-radius: 6px; }
+        
+        /* Buttons */
+        .btn { padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; border: none; margin-top: 1rem; }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn-danger { background: #ef4444; color: white; width: auto; padding: 5px 10px; font-size: 0.8rem; }
+        .btn-edit { background: #f59e0b; color: white; width: auto; padding: 5px 10px; font-size: 0.8rem; margin-right: 5px; }
+        .btn-cancel { background: #555; color: white; margin-top: 0.5rem; display: none; }
+
+        /* Management List */
+        .item-list { display: flex; flex-direction: column; gap: 10px; max-height: 600px; overflow-y: auto; }
+        .list-item {
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+        }
+        .list-item:hover { border-color: #666; }
+        .item-thumb { width: 60px; height: 40px; object-fit: cover; border-radius: 4px; margin-right: 10px; background: #333; }
+        .item-info { flex-grow: 1; }
+        .item-info h4 { margin: 0; font-size: 1rem; }
+        .item-info p { margin: 0; font-size: 0.8rem; color: #888; }
+        .item-actions { display: flex; }
+
+        .highlight { border-color: #6366f1 !important; background: rgba(99, 102, 241, 0.1); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>Admin Dashboard</h1>
+            <a href="index.html" style="color: var(--accent)">← Back to Playground</a>
+        </div>
+    </header>
+
+    <div class="admin-grid">
+        
+        <div class="admin-card">
+            <h2 id="formTitle">Upload New Content</h2>
+            <input type="hidden" id="editId"> <label>Game Title</label>
+            <input type="text" id="title" placeholder="e.g. Super Space Jump">
+
+            <label>Category</label>
+            <select id="type">
+                <option value="game">Game</option>
+                <option value="simulation">Simulation</option>
+                <option value="educational">Educational</option>
+            </select>
+
+            <label>Publisher</label>
+            <input type="text" id="publisher" value="Platform Admin">
+
+            <label>Game File (index.html)</label>
+            <input type="file" id="gameFile" accept=".html">
+            <p id="currentFileMsg" style="font-size: 0.8rem; color: #4caf50; display: none;">✓ Keeping existing file</p>
+
+            <label>Thumbnail (640x360)</label>
+            <input type="file" id="thumbFile" accept="image/*">
+            <img id="previewThumb" style="width: 100px; margin-top: 10px; display: none; border-radius: 4px;">
+
+            <button id="submitBtn" class="btn btn-primary">Publish Now</button>
+            <button id="cancelBtn" class="btn btn-cancel">Cancel Edit</button>
+        </div>
+
+        <div class="admin-card">
+            <h2>Manage Published Items</h2>
+            <div id="itemList" class="item-list">
+                <p style="color: #666;">No items uploaded yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Load Data from LocalStorage
+        let db = JSON.parse(localStorage.getItem('ai_playground_db') || '[]');
+
+        const titleInput = document.getElementById('title');
+        const typeInput = document.getElementById('type');
+        const pubInput = document.getElementById('publisher');
+        const editIdInput = document.getElementById('editId');
+        const gameFileInput = document.getElementById('gameFile');
+        const thumbFileInput = document.getElementById('thumbFile');
+        const submitBtn = document.getElementById('submitBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const formTitle = document.getElementById('formTitle');
+
+        // --- RENDER FUNCTIONS ---
+
+        function renderList() {
+            const listContainer = document.getElementById('itemList');
+            listContainer.innerHTML = '';
+
+            if (db.length === 0) {
+                listContainer.innerHTML = '<p style="color: #666;">No items uploaded yet.</p>';
+                return;
+            }
+
+            db.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                // Highlight if currently editing
+                if (item.id === editIdInput.value) div.classList.add('highlight');
+
+                div.innerHTML = `
+                    <img src="${item.thumbnail}" class="item-thumb" onerror="this.src='https://via.placeholder.com/60'">
+                    <div class="item-info">
+                        <h4>${item.title}</h4>
+                        <p>${item.type} • ${item.publisher}</p>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-edit" onclick="startEdit('${item.id}')">Edit</button>
+                        <button class="btn-danger" onclick="deleteItem('${item.id}')">Remove</button>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        // --- ACTIONS ---
+
+        // 2. Delete Item
+        window.deleteItem = (id) => {
+            if(confirm('Are you sure you want to delete this game?')) {
+                db = db.filter(item => item.id !== id);
+                saveAndRender();
+                // If we were editing the deleted item, reset form
+                if(editIdInput.value === id) resetForm();
+            }
+        };
+
+        // 3. Start Editing
+        window.startEdit = (id) => {
+            const item = db.find(i => i.id === id);
+            if(!item) return;
+
+            // Fill Form
+            editIdInput.value = item.id;
+            titleInput.value = item.title;
+            typeInput.value = item.type;
+            pubInput.value = item.publisher;
+
+            // UI Updates for Edit Mode
+            formTitle.textContent = "Edit Content";
+            submitBtn.textContent = "Update Content";
+            cancelBtn.style.display = "block";
+            
+            // Show current thumbnail preview
+            const preview = document.getElementById('previewThumb');
+            preview.src = item.thumbnail;
+            preview.style.display = 'block';
+
+            // Show "Keeping existing file" message
+            document.getElementById('currentFileMsg').style.display = 'block';
+
+            renderList(); // Re-render to show highlight
+        };
+
+        // 4. Reset Form (Cancel)
+        window.resetForm = () => {
+            editIdInput.value = '';
+            titleInput.value = '';
+            gameFileInput.value = '';
+            thumbFileInput.value = '';
+            
+            formTitle.textContent = "Upload New Content";
+            submitBtn.textContent = "Publish Now";
+            cancelBtn.style.display = "none";
+            document.getElementById('previewThumb').style.display = 'none';
+            document.getElementById('currentFileMsg').style.display = 'none';
+            
+            renderList();
+        };
+
+        cancelBtn.onclick = resetForm;
+
+        // 5. Submit (Create OR Update)
+        submitBtn.onclick = () => {
+            const id = editIdInput.value;
+            const isEditing = !!id;
+
+            // Validation: If creating new, file is required. If editing, it's optional.
+            if (!isEditing && !gameFileInput.files[0]) {
+                alert("Please upload a game file.");
+                return;
+            }
+            if (!titleInput.value) {
+                alert("Title is required.");
+                return;
+            }
+
+            // Determine Image URL
+            let thumbUrl;
+            if (thumbFileInput.files[0]) {
+                thumbUrl = URL.createObjectURL(thumbFileInput.files[0]);
+            } else if (isEditing) {
+                // Keep old thumbnail if not replaced
+                thumbUrl = db.find(i => i.id === id).thumbnail;
+            } else {
+                thumbUrl = "https://via.placeholder.com/640x360/333/fff?text=No+Image";
+            }
+
+            // Determine Game URL
+            let gameUrl;
+            if (gameFileInput.files[0]) {
+                gameUrl = URL.createObjectURL(gameFileInput.files[0]);
+            } else if (isEditing) {
+                // Keep old file
+                gameUrl = db.find(i => i.id === id).gameUrl;
+            }
+
+            const newItemData = {
+                id: isEditing ? id : 'custom-' + Date.now(),
+                title: titleInput.value,
+                type: typeInput.value,
+                publisher: pubInput.value,
+                thumbnail: thumbUrl,
+                gameUrl: gameUrl,
+                tags: ["admin-upload"],
+                description: "Updated via Admin Console"
+            };
+
+            if (isEditing) {
+                // Update existing item in array
+                const index = db.findIndex(i => i.id === id);
+                if(index !== -1) db[index] = newItemData;
+            } else {
+                // Add new item
+                db.push(newItemData);
+            }
+
+            saveAndRender();
+            resetForm();
+            alert(isEditing ? "Updated successfully!" : "Published successfully!");
+        };
+
+        function saveAndRender() {
+            localStorage.setItem('ai_playground_db', JSON.stringify(db));
+            renderList();
+        }
+
+        // Initial Render
+        renderList();
+    </script>
+</body>
+</html>
