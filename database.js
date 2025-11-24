@@ -43,7 +43,8 @@ export const allGames = [
         publisher: "Admin",
         description: "Educational Advanced Crypto Network Simulation",
         gameUrl: "games/Cryptosym.html",
-        thumbnail: "thumbs/nuclear.jpg"
+        thumbnail: "thumbs/cryptosimm.png"
     }
 
 ];
+
