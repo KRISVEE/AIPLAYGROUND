@@ -33,5 +33,17 @@ export const allGames = [
         description: "Educational Nuclear Reactor Simulation",
         gameUrl: "games/necularsimulation.html",
         thumbnail: "thumbs/nuclear.jpg"
+    },
+
+        // GAME 3: (Example - Copy this block to add a new game)
+    {
+        id: "game-004",
+        title: "Advanced Crypto Network Simulation",
+        type: "simulation",
+        publisher: "Admin",
+        description: "Educational Advanced Crypto Network Simulation",
+        gameUrl: "games/Cryptosym.html",
+        thumbnail: "thumbs/nuclear.jpg"
     }
+
 ];
